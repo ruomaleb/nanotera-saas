@@ -449,19 +449,29 @@ export default function PaletteEditor({
           )}
         </div>
         {staging.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+          <div className="flex flex-wrap gap-2 px-3 pb-3">
             {staging.map((mag, si) => (
               <div
                 key={mag.code_pdv + si}
                 draggable
                 onDragStart={e => onDragStartFromStaging(e, si, mag)}
                 onDragEnd={onDragEnd}
-                className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-amber-200 rounded-lg cursor-grab active:cursor-grabbing select-none hover:border-amber-400 transition-colors"
+                className="flex flex-col gap-1 px-2.5 py-2 bg-white border border-amber-200 rounded-lg cursor-grab active:cursor-grabbing select-none hover:border-amber-400 transition-colors min-w-[180px]"
               >
-                <span className="text-gray-300 text-xs">⠿</span>
-                <span className="text-[10px] text-gray-400 font-mono">{mag.code_pdv}</span>
-                <span className="text-[11px] text-gray-700 font-medium">{mag.nom_pdv}</span>
-                <span className="text-[10px] text-gray-400">{mag.nb_cartons}c</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-300 text-xs">⠿</span>
+                  <span className="text-[10px] text-gray-400 font-mono">{mag.code_pdv}</span>
+                  <span className="text-[11px] text-gray-800 font-semibold truncate max-w-[120px]">{mag.nom_pdv}</span>
+                </div>
+                <div className="flex gap-2 text-[10px] text-gray-400 pl-4 flex-wrap">
+                  {mag.ville && <span>{mag.ville}</span>}
+                  <span>·</span>
+                  <span className="font-medium text-amber-600">{mag.nb_cartons} carton{mag.nb_cartons > 1 ? 's' : ''}</span>
+                  <span>·</span>
+                  <span>{(mag.nb_cartons * conditionnement.ex_par_carton).toLocaleString('fr')} ex</span>
+                  <span>·</span>
+                  <span>{Math.round(mag.nb_cartons * conditionnement.ex_par_carton * conditionnement.poids_unitaire_kg)} kg</span>
+                </div>
               </div>
             ))}
           </div>
