@@ -140,9 +140,14 @@ export default function PaletteEditor({
   const [alertMsg, setAlertMsg] = useState('')
   const [journalOpen, setJournalOpen] = useState(false)
 
+  // Zone de transit (buffer temporaire)
+  const [staging, setStaging] = useState<Magasin[]>([])
+  const [dragOverStaging, setDragOverStaging] = useState(false)
+
   // Drag state
   const dragSrc = useRef<{
-    centrale: string; palIdx: number; magIdx: number; mag: Magasin
+    centrale?: string; palIdx?: number; magIdx?: number
+    stagingIdx?: number; mag: Magasin
   } | null>(null)
   const [dragOverPal, setDragOverPal] = useState<{ centrale: string; idx: number } | null>(null)
 
@@ -168,15 +173,28 @@ export default function PaletteEditor({
     e.dataTransfer.effectAllowed = 'move'
   }
 
+  const onDragStartFromStaging = (e: React.DragEvent, stagingIdx: number, mag: Magasin) => {
+    dragSrc.current = { stagingIdx, mag }
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
   const onDragEnd = () => {
     dragSrc.current = null
     setDragOverPal(null)
+    setDragOverStaging(false)
   }
 
   const onDragOver = (e: React.DragEvent, centrale: string, palIdx: number) => {
     e.preventDefault()
     if (!dragSrc.current) return
-    if (dragSrc.current.palIdx === palIdx && dragSrc.current.centrale === centrale) return
+    const src = dragSrc.current
+    // Si source = staging, toujours autoriser le survol
+    if (src.stagingIdx !== undefined) {
+      setDragOverPal({ centrale, idx: palIdx })
+      e.dataTransfer.dropEffect = 'move'
+      return
+    }
+    if (src.palIdx === palIdx && src.centrale === centrale) return
     setDragOverPal({ centrale, idx: palIdx })
     e.dataTransfer.dropEffect = 'move'
   }
@@ -187,58 +205,96 @@ export default function PaletteEditor({
     }
   }
 
+  const onDropToStaging = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverStaging(false)
+    const src = dragSrc.current
+    if (!src || src.stagingIdx !== undefined) return // déjà en staging
+    const { centrale, palIdx, magIdx, mag } = src as any
+    setState(prev => {
+      pushHistory(prev)
+      const next = deepClone(prev)
+      const srcPal = next[centrale].groupees[palIdx]
+      srcPal.magasins.splice(magIdx, 1)
+      srcPal.nb_cartons -= mag.nb_cartons
+      srcPal.nb_exemplaires = srcPal.magasins.reduce((s: number, m: Magasin) => s + m.nb_cartons * EX_PAR_CARTON, 0)
+      srcPal.poids_kg = Math.round(srcPal.nb_exemplaires * POIDS_U)
+      if (srcPal.magasins.length === 0) next[centrale].groupees.splice(palIdx, 1)
+      return next
+    })
+    setStaging(s => [...s, mag])
+    setMods(m => [...m, `${mag.nom_pdv} (${mag.code_pdv}) → Zone de transit`])
+    dragSrc.current = null
+  }
+
   const onDrop = (e: React.DragEvent, targetCentrale: string, targetPalIdx: number) => {
     e.preventDefault()
     setDragOverPal(null)
     const src = dragSrc.current
     if (!src) return
-    if (src.palIdx === targetPalIdx && src.centrale === targetCentrale) return
 
     const targetPal = state[targetCentrale]?.groupees[targetPalIdx]
     if (!targetPal) return
 
-    if (targetPal.nb_cartons + src.mag.nb_cartons > CARTONS_MAX) {
+    // Source = zone de transit
+    if (src.stagingIdx !== undefined) {
+      if (targetPal.nb_cartons + src.mag.nb_cartons > CARTONS_MAX) {
+        showAlert(`Impossible : palette #${targetPalIdx + 1} dépasserait ${CARTONS_MAX} cartons`)
+        dragSrc.current = null; return
+      }
+      setState(prev => {
+        pushHistory(prev)
+        const next = deepClone(prev)
+        const tgtPal = next[targetCentrale].groupees[targetPalIdx]
+        tgtPal.magasins.push(src.mag)
+        tgtPal.nb_cartons += src.mag.nb_cartons
+        tgtPal.nb_exemplaires = tgtPal.magasins.reduce((s: number, m: Magasin) => s + m.nb_cartons * EX_PAR_CARTON, 0)
+        tgtPal.poids_kg = Math.round(tgtPal.nb_exemplaires * POIDS_U)
+        return next
+      })
+      setStaging(s => s.filter((_, i) => i !== src.stagingIdx))
+      setMods(m => [...m, `Zone de transit → ${targetCentrale} palette #${targetPalIdx + 1} : ${src.mag.nom_pdv} (${src.mag.code_pdv})`])
+      dragSrc.current = null; return
+    }
+
+    // Source = palette normale
+    const { centrale, palIdx, magIdx, mag } = src as any
+    if (palIdx === targetPalIdx && centrale === targetCentrale) { dragSrc.current = null; return }
+
+    if (targetPal.nb_cartons + mag.nb_cartons > CARTONS_MAX) {
       showAlert(
         `Impossible : palette #${targetPalIdx + 1} dépasserait ${CARTONS_MAX} cartons ` +
-        `(${targetPal.nb_cartons} + ${src.mag.nb_cartons} = ${targetPal.nb_cartons + src.mag.nb_cartons})`
+        `(${targetPal.nb_cartons} + ${mag.nb_cartons} = ${targetPal.nb_cartons + mag.nb_cartons})`
       )
-      dragSrc.current = null
-      return
+      dragSrc.current = null; return
     }
 
     setState(prev => {
       pushHistory(prev)
       const next = deepClone(prev)
-      const srcPal = next[src.centrale].groupees[src.palIdx]
+      const srcPal = next[centrale].groupees[palIdx]
       const tgtPal = next[targetCentrale].groupees[targetPalIdx]
 
-      srcPal.magasins.splice(src.magIdx, 1)
-      srcPal.nb_cartons     -= src.mag.nb_cartons
-      srcPal.nb_exemplaires  = srcPal.magasins.reduce((s, m) => s + m.nb_cartons * EX_PAR_CARTON, 0)
+      srcPal.magasins.splice(magIdx, 1)
+      srcPal.nb_cartons     -= mag.nb_cartons
+      srcPal.nb_exemplaires  = srcPal.magasins.reduce((s: number, m: Magasin) => s + m.nb_cartons * EX_PAR_CARTON, 0)
       srcPal.poids_kg        = Math.round(srcPal.nb_exemplaires * POIDS_U)
 
-      tgtPal.magasins.push(src.mag)
-      tgtPal.nb_cartons     += src.mag.nb_cartons
-      tgtPal.nb_exemplaires  = tgtPal.magasins.reduce((s, m) => s + m.nb_cartons * EX_PAR_CARTON, 0)
+      tgtPal.magasins.push(mag)
+      tgtPal.nb_cartons     += mag.nb_cartons
+      tgtPal.nb_exemplaires  = tgtPal.magasins.reduce((s: number, m: Magasin) => s + m.nb_cartons * EX_PAR_CARTON, 0)
       tgtPal.poids_kg        = Math.round(tgtPal.nb_exemplaires * POIDS_U)
 
-      const srcLabel = `#${src.palIdx + 1}`
+      const srcLabel = `#${palIdx + 1}`
       const tgtLabel = `#${targetPalIdx + 1}`
-
       if (srcPal.magasins.length === 0) {
-        next[src.centrale].groupees.splice(src.palIdx, 1)
-        setMods(m => [...m,
-          `${src.centrale} — ${src.mag.nom_pdv} (${src.mag.code_pdv}) : palette ${srcLabel} → ${tgtLabel} (${srcLabel} vide supprimée)`,
-        ])
+        next[centrale].groupees.splice(palIdx, 1)
+        setMods(m2 => [...m2, `${centrale} — ${mag.nom_pdv} (${mag.code_pdv}) : palette ${srcLabel} → ${tgtLabel} (${srcLabel} supprimée)`])
       } else {
-        setMods(m => [...m,
-          `${src.centrale} — ${src.mag.nom_pdv} (${src.mag.code_pdv}) : palette ${srcLabel} → ${tgtLabel}`,
-        ])
+        setMods(m2 => [...m2, `${centrale} — ${mag.nom_pdv} (${mag.code_pdv}) : palette ${srcLabel} → ${tgtLabel}`])
       }
-
       return next
     })
-
     dragSrc.current = null
   }
 
@@ -290,6 +346,10 @@ export default function PaletteEditor({
   }
 
   const save = async () => {
+    if (staging.length > 0) {
+      showAlert(`${staging.length} magasin(s) encore en zone de transit — replacez-les avant de sauvegarder.`)
+      return
+    }
     setSaving(true)
     setSaveErr('')
     setSaveOk(false)
@@ -364,6 +424,50 @@ export default function PaletteEditor({
         </div>
       )}
 
+      {/* Zone de transit */}
+      <div
+        className={`rounded-xl border-2 border-dashed transition-colors ${
+          dragOverStaging
+            ? 'border-blue-400 bg-blue-50'
+            : staging.length > 0
+            ? 'border-amber-300 bg-amber-50/60'
+            : 'border-gray-200 bg-gray-50/50'
+        }`}
+        onDragOver={e => { e.preventDefault(); setDragOverStaging(true) }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverStaging(false) }}
+        onDrop={onDropToStaging}
+      >
+        <div className="px-3 py-2 flex items-center gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">Zone de transit</span>
+          {staging.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+              {staging.length} magasin{staging.length > 1 ? 's' : ''} en attente
+            </span>
+          )}
+          {staging.length === 0 && (
+            <span className="text-[10px] text-gray-400">Déposez ici pour libérer temporairement des cartons</span>
+          )}
+        </div>
+        {staging.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pb-3">
+            {staging.map((mag, si) => (
+              <div
+                key={mag.code_pdv + si}
+                draggable
+                onDragStart={e => onDragStartFromStaging(e, si, mag)}
+                onDragEnd={onDragEnd}
+                className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-amber-200 rounded-lg cursor-grab active:cursor-grabbing select-none hover:border-amber-400 transition-colors"
+              >
+                <span className="text-gray-300 text-xs">⠿</span>
+                <span className="text-[10px] text-gray-400 font-mono">{mag.code_pdv}</span>
+                <span className="text-[11px] text-gray-700 font-medium">{mag.nom_pdv}</span>
+                <span className="text-[10px] text-gray-400">{mag.nb_cartons}c</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-5 gap-2">
         {[
@@ -406,11 +510,17 @@ export default function PaletteEditor({
           <RotateCcw size={12} /> Reset
         </button>
         <button onClick={save} disabled={saving || mods.length === 0}
-          className="h-8 px-3 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 flex items-center gap-1.5 transition-colors">
+          className={`h-8 px-3 text-xs rounded-lg disabled:opacity-40 flex items-center gap-1.5 transition-colors ${
+            staging.length > 0
+              ? 'bg-amber-500 text-white hover:bg-amber-600'
+              : 'bg-gray-900 text-white hover:bg-gray-800'
+          }`}>
           {saving
             ? <><Loader2 size={12} className="animate-spin" /> Sauvegarde…</>
             : saveOk
             ? <><CheckCircle2 size={12} /> Sauvegardé</>
+            : staging.length > 0
+            ? <><AlertCircle size={12} /> {staging.length} en transit</>
             : <><Save size={12} /> Sauvegarder{mods.length > 0 ? ` (${mods.length})` : ''}</>}
         </button>
       </div>
