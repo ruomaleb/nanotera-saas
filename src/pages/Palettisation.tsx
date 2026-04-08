@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil } from 'lucide-react'
 import PaletteEditor from '../components/PaletteEditor'
+import PaletteAlerts from '../components/PaletteAlerts'
 
 interface PaletteRow {
   id: string
@@ -247,6 +248,13 @@ export default function Palettisation() {
               </div>
             </div>
           </div>
+<PaletteAlerts
+            operationId={op.id}
+            onRelancer={handleRunBinpacking}
+          />
+
+          {/* Relancer */}
+          <div className="flex justify-end gap-2">
 
           {/* Relancer */}
           <div className="flex justify-end gap-2">
