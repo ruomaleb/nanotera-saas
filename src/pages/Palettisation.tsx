@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil } from 'lucide-react'
 import PaletteEditor from '../components/PaletteEditor'
 import PaletteAlerts from '../components/PaletteAlerts'
+import AutoParams, { ParamsValues } from '../components/AutoParams'
 
 interface PaletteRow {
   id: string
@@ -34,6 +35,12 @@ export default function Palettisation() {
   const [error, setError]               = useState('')
   const [mode, setMode]                 = useState<Mode>('view')
   const [expandedCentrales, setExpandedCentrales] = useState<Set<string>>(new Set())
+  const [params, setParams]             = useState<ParamsValues>({
+    ex_par_carton:       200,
+    cartons_par_palette: 48,
+    seuil_pdv:           2800,
+    poids_unitaire_kg:   0.054,
+  })
 
   // Chargement liste opérations
   useEffect(() => {
@@ -71,6 +78,14 @@ export default function Palettisation() {
 
     setOp(opResp.data)
     setPalettes(palResp.data ?? [])
+    if (opResp.data) {
+      setParams({
+        ex_par_carton:       opResp.data.ex_par_carton       ?? 200,
+        cartons_par_palette: opResp.data.cartons_par_palette  ?? 48,
+        seuil_pdv:           opResp.data.seuil_pdv            ?? 2800,
+        poids_unitaire_kg:   opResp.data.poids_unitaire_kg    ?? 0.054,
+      })
+    }
     if (palResp.data) {
       setExpandedCentrales(new Set(palResp.data.map((p: any) => p.centrale_nom)))
     }
@@ -87,10 +102,10 @@ export default function Palettisation() {
       await api(`/api/operations/${op.id}/binpacking`, {
         method: 'POST',
         body: {
-          ex_par_carton:       op.ex_par_carton       ?? 200,
-          cartons_par_palette: op.cartons_par_palette  ?? 48,
-          seuil_pdv:           op.seuil_pdv            ?? 2800,
-          poids_unitaire_kg:   op.poids_unitaire_kg    ?? 0.054,
+          ex_par_carton:       params.ex_par_carton,
+          cartons_par_palette: params.cartons_par_palette,
+          seuil_pdv:           params.seuil_pdv,
+          poids_unitaire_kg:   params.poids_unitaire_kg,
         },
       })
       await loadPalettes()
@@ -181,17 +196,34 @@ export default function Palettisation() {
             </div>
             <div className="mt-5 grid grid-cols-4 gap-2 text-left">
               {[
-                { label: 'Ex/carton',   value: op.ex_par_carton       ?? 200 },
-                { label: 'Crt/palette', value: op.cartons_par_palette  ?? 48 },
-                { label: 'Seuil PDV',   value: (op.seuil_pdv ?? 2800).toLocaleString() },
-                { label: 'Poids/ex',    value: `${op.poids_unitaire_kg ?? 0.054} kg` },
+                { key: 'ex_par_carton'       as keyof ParamsValues, label: 'Ex/carton',   step: 1 },
+                { key: 'cartons_par_palette' as keyof ParamsValues, label: 'Crt/palette', step: 1 },
+                { key: 'seuil_pdv'           as keyof ParamsValues, label: 'Seuil PDV',   step: 100 },
+                { key: 'poids_unitaire_kg'   as keyof ParamsValues, label: 'Poids/ex kg', step: 0.001 },
               ].map(s => (
-                <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2">
-                  <div className="text-[10px] text-gray-400">{s.label}</div>
-                  <div className="text-sm font-medium">{s.value}</div>
+                <div key={s.key} className="bg-gray-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-gray-400 mb-1">{s.label}</div>
+                  <input
+                    type="number"
+                    step={s.step}
+                    value={params[s.key]}
+                    onChange={e => setParams(p => ({ ...p, [s.key]: parseFloat(e.target.value) || 0 }))}
+                    className="w-full text-sm font-medium bg-transparent border-b border-gray-200 focus:border-gray-600 outline-none pb-0.5"
+                  />
                 </div>
               ))}
             </div>
+
+            {/* AutoParams IA */}
+            {op && (
+              <div className="mt-4 text-left">
+                <AutoParams
+                  operationId={op.id}
+                  currentValues={params}
+                  onApply={setParams}
+                />
+              </div>
+            )}
             {error && (
               <div className="mt-4 flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 text-left">
                 <AlertCircle size={14} className="flex-shrink-0 mt-0.5" /> <span>{error}</span>
