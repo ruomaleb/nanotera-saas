@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
-import { Boxes, ChevronDown, ChevronRight, Loader2, Play, AlertCircle, ArrowRight } from 'lucide-react'
+import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil } from 'lucide-react'
+import PaletteEditor from '../components/PaletteEditor'
 
 interface PaletteRow {
   id: string
@@ -18,19 +19,22 @@ interface PaletteRow {
   magasins: any
 }
 
+type Mode = 'view' | 'edit'
+
 export default function Palettisation() {
   const { operationId } = useParams()
   const navigate = useNavigate()
-  const [operations, setOperations] = useState<any[]>([])
-  const [selectedOp, setSelectedOp] = useState(operationId || '')
-  const [op, setOp] = useState<any>(null)
-  const [palettes, setPalettes] = useState<PaletteRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [operations, setOperations]     = useState<any[]>([])
+  const [selectedOp, setSelectedOp]     = useState(operationId || '')
+  const [op, setOp]                     = useState<any>(null)
+  const [palettes, setPalettes]         = useState<PaletteRow[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [running, setRunning]           = useState(false)
+  const [error, setError]               = useState('')
+  const [mode, setMode]                 = useState<Mode>('view')
   const [expandedCentrales, setExpandedCentrales] = useState<Set<string>>(new Set())
-  const [running, setRunning] = useState(false)
-  const [error, setError] = useState('')
 
-  // Load operations list
+  // Chargement liste opérations
   useEffect(() => {
     supabase
       .from('ops_operations')
@@ -43,11 +47,12 @@ export default function Palettisation() {
       })
   }, [operationId])
 
-  // Load palettes for selected operation
+  // Chargement palettes
   const loadPalettes = useCallback(async () => {
     if (!selectedOp) return
     setLoading(true)
     setError('')
+    setMode('view')
 
     const [opResp, palResp] = await Promise.all([
       supabase
@@ -65,7 +70,6 @@ export default function Palettisation() {
 
     setOp(opResp.data)
     setPalettes(palResp.data ?? [])
-    // Auto-expand all centrales by default
     if (palResp.data) {
       setExpandedCentrales(new Set(palResp.data.map((p: any) => p.centrale_nom)))
     }
@@ -82,10 +86,10 @@ export default function Palettisation() {
       await api(`/api/operations/${op.id}/binpacking`, {
         method: 'POST',
         body: {
-          ex_par_carton: op.ex_par_carton ?? 200,
-          cartons_par_palette: op.cartons_par_palette ?? 48,
-          seuil_pdv: op.seuil_pdv ?? 2800,
-          poids_unitaire_kg: op.poids_unitaire_kg ?? 0.054,
+          ex_par_carton:       op.ex_par_carton       ?? 200,
+          cartons_par_palette: op.cartons_par_palette  ?? 48,
+          seuil_pdv:           op.seuil_pdv            ?? 2800,
+          poids_unitaire_kg:   op.poids_unitaire_kg    ?? 0.054,
         },
       })
       await loadPalettes()
@@ -105,29 +109,56 @@ export default function Palettisation() {
     })
   }
 
-  // Group palettes by centrale
   const grouped = palettes.reduce<Record<string, PaletteRow[]>>((acc, p) => {
     (acc[p.centrale_nom] ??= []).push(p)
     return acc
   }, {})
 
+  // Conditionnement pour l'éditeur
+  const conditionnement = {
+    ex_par_carton:       op?.ex_par_carton       ?? 200,
+    cartons_par_palette: op?.cartons_par_palette  ?? 48,
+    poids_unitaire_kg:   op?.poids_unitaire_kg    ?? 0.054,
+  }
+
   return (
     <div>
+      {/* ── Header ── */}
       <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
         <div>
           <h1 className="text-base font-semibold text-gray-900">Palettisation</h1>
           <p className="text-xs text-gray-400 mt-0.5">
             {op
               ? `${op.code_operation} — ${palettes.length} palettes${op.nb_palettes_grp != null ? ` (${op.nb_palettes_grp}G + ${op.nb_palettes_pdv}P)` : ''}`
-              : 'Selectionner une operation'}
+              : 'Sélectionner une opération'}
           </p>
         </div>
-        <select value={selectedOp} onChange={e => { setSelectedOp(e.target.value); navigate(`/palettisation/${e.target.value}`) }}
-          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white">
-          {operations.map(o => (
-            <option key={o.id} value={o.id}>{o.code_operation} — {o.nom_operation ?? o.code_operation}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          {palettes.length > 0 && (
+            <button
+              onClick={() => setMode(m => m === 'edit' ? 'view' : 'edit')}
+              className={`flex items-center gap-1.5 h-8 px-3 text-xs rounded-lg border transition-colors ${
+                mode === 'edit'
+                  ? 'bg-gray-900 text-white border-transparent'
+                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <Pencil size={12} />
+              {mode === 'edit' ? 'Terminer l\'édition' : 'Éditer les palettes'}
+            </button>
+          )}
+          <select
+            value={selectedOp}
+            onChange={e => { setSelectedOp(e.target.value); navigate(`/palettisation/${e.target.value}`) }}
+            className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white"
+          >
+            {operations.map(o => (
+              <option key={o.id} value={o.id}>
+                {o.code_operation} — {o.nom_operation ?? o.code_operation}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -135,54 +166,65 @@ export default function Palettisation() {
       ) : !op ? (
         <div className="text-center py-16">
           <Boxes size={32} className="mx-auto text-gray-300 mb-3" />
-          <div className="text-sm text-gray-500">Aucune operation</div>
+          <div className="text-sm text-gray-500">Aucune opération</div>
         </div>
       ) : palettes.length === 0 ? (
-        // No palettes yet - show binpacking trigger
+
+        /* ── Aucune palette : lancer le bin-packing ── */
         <div className="max-w-2xl mx-auto px-5 py-12">
           <div className="border border-gray-200 rounded-xl p-6 text-center">
             <Boxes size={32} className="mx-auto text-gray-300 mb-3" />
-            <div className="text-sm font-medium text-gray-900">Aucune palette generee</div>
+            <div className="text-sm font-medium text-gray-900">Aucune palette générée</div>
             <div className="text-xs text-gray-500 mt-1">
-              Lancez l'algorithme de bin-packing pour composer les palettes a partir des donnees normalisees
+              Lancez l'algorithme de bin-packing pour composer les palettes à partir des données normalisées
             </div>
-
             <div className="mt-5 grid grid-cols-4 gap-2 text-left">
-              <div className="bg-gray-50 rounded-lg px-3 py-2">
-                <div className="text-[10px] text-gray-400">Ex/carton</div>
-                <div className="text-sm font-medium">{op.ex_par_carton ?? 200}</div>
-              </div>
-              <div className="bg-gray-50 rounded-lg px-3 py-2">
-                <div className="text-[10px] text-gray-400">Crt/palette</div>
-                <div className="text-sm font-medium">{op.cartons_par_palette ?? 48}</div>
-              </div>
-              <div className="bg-gray-50 rounded-lg px-3 py-2">
-                <div className="text-[10px] text-gray-400">Seuil PDV</div>
-                <div className="text-sm font-medium">{(op.seuil_pdv ?? 2800).toLocaleString()}</div>
-              </div>
-              <div className="bg-gray-50 rounded-lg px-3 py-2">
-                <div className="text-[10px] text-gray-400">Poids/ex</div>
-                <div className="text-sm font-medium">{op.poids_unitaire_kg ?? 0.054} kg</div>
-              </div>
+              {[
+                { label: 'Ex/carton',   value: op.ex_par_carton       ?? 200 },
+                { label: 'Crt/palette', value: op.cartons_par_palette  ?? 48 },
+                { label: 'Seuil PDV',   value: (op.seuil_pdv ?? 2800).toLocaleString() },
+                { label: 'Poids/ex',    value: `${op.poids_unitaire_kg ?? 0.054} kg` },
+              ].map(s => (
+                <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-gray-400">{s.label}</div>
+                  <div className="text-sm font-medium">{s.value}</div>
+                </div>
+              ))}
             </div>
-
             {error && (
               <div className="mt-4 flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 text-left">
                 <AlertCircle size={14} className="flex-shrink-0 mt-0.5" /> <span>{error}</span>
               </div>
             )}
-
-            <button onClick={handleRunBinpacking} disabled={running}
-              className="mt-5 px-5 py-2.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors flex items-center gap-2 mx-auto">
+            <button
+              onClick={handleRunBinpacking}
+              disabled={running}
+              className="mt-5 px-5 py-2.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors flex items-center gap-2 mx-auto"
+            >
               {running
                 ? <><Loader2 size={14} className="animate-spin" /> Bin-packing en cours...</>
                 : <><Play size={14} /> Lancer le bin-packing</>}
             </button>
           </div>
         </div>
+
+      ) : mode === 'edit' ? (
+
+        /* ── Mode éditeur ── */
+        <div className="max-w-5xl mx-auto px-5 py-6">
+          <PaletteEditor
+            operationId={op.id}
+            rawPalettes={palettes}
+            conditionnement={conditionnement}
+            onSaved={loadPalettes}
+          />
+        </div>
+
       ) : (
-        // Display palettes grouped by centrale
+
+        /* ── Mode vue ── */
         <div className="max-w-5xl mx-auto px-5 py-6 space-y-5">
+
           {/* Stats */}
           <div className="grid grid-cols-4 gap-3">
             <div className="bg-gray-50 rounded-lg p-3">
@@ -200,17 +242,22 @@ export default function Palettisation() {
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
               <div className="text-[11px] text-gray-500">Poids total</div>
-              <div className="text-xl font-semibold">{op.poids_total_kg ? `${Math.round(op.poids_total_kg).toLocaleString()} kg` : '—'}</div>
+              <div className="text-xl font-semibold">
+                {op.poids_total_kg ? `${Math.round(op.poids_total_kg).toLocaleString()} kg` : '—'}
+              </div>
             </div>
           </div>
 
-          {/* Re-run option */}
+          {/* Relancer */}
           <div className="flex justify-end gap-2">
-            <button onClick={handleRunBinpacking} disabled={running}
-              className="text-[11px] text-gray-500 hover:text-gray-700 px-2 py-1 hover:bg-gray-100 rounded transition-colors flex items-center gap-1">
+            <button
+              onClick={handleRunBinpacking}
+              disabled={running}
+              className="text-[11px] text-gray-500 hover:text-gray-700 px-2 py-1 hover:bg-gray-100 rounded transition-colors flex items-center gap-1"
+            >
               {running
                 ? <><Loader2 size={11} className="animate-spin" /> Recalcul...</>
-                : <>Relancer le bin-packing</>}
+                : 'Relancer le bin-packing'}
             </button>
           </div>
 
@@ -220,13 +267,13 @@ export default function Palettisation() {
             </div>
           )}
 
-          {/* Centrale groups */}
+          {/* Groupes par centrale */}
           {Object.entries(grouped).map(([centrale, pals]) => {
             const isExpanded = expandedCentrales.has(centrale)
-            const totalEx = pals.reduce((s, p) => s + p.nb_exemplaires, 0)
-            const totalKg = pals.reduce((s, p) => s + p.poids_kg, 0)
-            const nbGrp = pals.filter(p => p.type_palette === 'groupee').length
-            const nbPdv = pals.filter(p => p.type_palette === 'pdv').length
+            const totalEx    = pals.reduce((s, p) => s + p.nb_exemplaires, 0)
+            const totalKg    = pals.reduce((s, p) => s + p.poids_kg, 0)
+            const nbGrp      = pals.filter(p => p.type_palette === 'groupee').length
+            const nbPdv      = pals.filter(p => p.type_palette === 'pdv').length
 
             return (
               <div key={centrale} className="border border-gray-200 rounded-xl overflow-hidden">
@@ -235,7 +282,6 @@ export default function Palettisation() {
                   className="w-full px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    {isExpanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
                     <span className="font-medium text-sm text-gray-900">{centrale}</span>
                     <span className="text-[10px] text-gray-400">{pals.length} palettes ({nbGrp}G + {nbPdv}P)</span>
                   </div>
@@ -244,13 +290,13 @@ export default function Palettisation() {
                     <span>{Math.round(totalKg).toLocaleString()} kg</span>
                   </div>
                 </button>
+
                 {isExpanded && (
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-3">
                     {pals.map(p => {
                       const isPdv = p.type_palette === 'pdv'
                       return (
-                        <div
-                          key={p.id}
+                        <div key={p.id}
                           className={`border rounded-lg p-3 ${isPdv ? 'bg-amber-50/40 border-amber-200' : 'bg-blue-50/40 border-blue-200'}`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
@@ -295,11 +341,13 @@ export default function Palettisation() {
             )
           })}
 
-          {/* Next step */}
+          {/* Suivant */}
           <div className="flex justify-end pt-2">
-            <button onClick={() => navigate('/livrables')}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
-              Generer les livrables <ArrowRight size={14} />
+            <button
+              onClick={() => navigate('/livrables')}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              Générer les livrables <ArrowRight size={14} />
             </button>
           </div>
         </div>
