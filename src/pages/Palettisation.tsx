@@ -2,9 +2,147 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
-import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil } from 'lucide-react'
+import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
 import PaletteEditor from '../components/PaletteEditor'
 import PaletteAlerts from '../components/PaletteAlerts'
+import AutoParams, { ParamsValues } from '../components/AutoParams'
+
+// ── Carte palette avec toggle détail magasins ─────────────────
+
+interface PaletteCardProps {
+  p: any
+  isPdv: boolean
+  magasins: any[]
+  exParCarton: number
+}
+
+function PaletteCard({ p, isPdv, magasins, exParCarton }: PaletteCardProps) {
+  const [showDetail, setShowDetail] = useState(false)
+
+  const nbCartons = p.nb_cartons != null
+    ? p.nb_cartons
+    : Math.ceil(p.nb_exemplaires / exParCarton)
+
+  const hasMagasins = magasins.length > 0
+
+  return (
+    <div
+      className={`border rounded-lg overflow-hidden ${isPdv ? 'bg-amber-50/40 border-amber-200' : 'bg-blue-50/40 border-blue-200'}`}
+      data-selectable={JSON.stringify({
+        type: isPdv ? 'palette_pdv' : 'palette_groupee',
+        label: `Palette ${isPdv ? 'PDV' : 'GRP'} #${p.numero} — ${p.centrale_nom}`,
+        data: {
+          centrale: p.centrale_nom, numero: p.numero, type: p.type_palette,
+          nb_exemplaires: p.nb_exemplaires, nb_cartons: nbCartons,
+          poids_kg: Math.round(p.poids_kg), taux_remplissage: p.taux_remplissage,
+          code_pdv: p.code_pdv, nb_magasins: magasins.length,
+        }
+      })}
+      data-selectable-label={`Palette ${isPdv ? 'PDV' : 'GRP'} #${p.numero}`}
+    >
+      {/* Header carte */}
+      <div className="p-3.5">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${isPdv ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+              {isPdv ? 'PDV' : 'GRP'}
+            </span>
+            <span className="text-sm font-semibold text-gray-900">#{p.numero}</span>
+          </div>
+          {isPdv && p.code_pdv ? (
+            <span className="text-xs font-mono font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+              {p.code_pdv}
+            </span>
+          ) : p.taux_remplissage != null ? (
+            <span className={`text-xs font-medium ${p.taux_remplissage < 0.5 ? 'text-amber-600' : 'text-gray-500'}`}>
+              {Math.round(p.taux_remplissage * 100)}%
+            </span>
+          ) : null}
+        </div>
+
+        {/* Métriques résumé */}
+        <div className="space-y-1 text-sm text-gray-600">
+          <div className="flex justify-between">
+            <span>Exemplaires</span>
+            <span className="font-mono font-medium">{p.nb_exemplaires.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Cartons</span>
+            <span className="font-mono">{nbCartons}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Poids</span>
+            <span className="font-mono">{Math.round(p.poids_kg)} kg</span>
+          </div>
+          {hasMagasins && (
+            <div className="flex justify-between">
+              <span>Magasins</span>
+              <span className="font-mono">{magasins.length}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Toggle détail */}
+      {hasMagasins && (
+        <>
+          <button
+            onClick={() => setShowDetail(d => !d)}
+            className={`w-full flex items-center justify-between px-3.5 py-2 text-xs font-medium border-t transition-colors ${
+              isPdv
+                ? 'border-amber-200 text-amber-700 bg-amber-50/60 hover:bg-amber-100/60'
+                : 'border-blue-200 text-blue-700 bg-blue-50/60 hover:bg-blue-100/60'
+            }`}
+          >
+            <span>Détail magasins</span>
+            {showDetail ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+
+          {showDetail && (
+            <div className="bg-white border-t border-gray-100 max-h-64 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100 sticky top-0">
+                    <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Code</th>
+                    <th className="text-left px-2 py-1.5 text-gray-500 font-medium">Magasin</th>
+                    <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Ex</th>
+                    <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Crt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {magasins.map((mag: any, i: number) => {
+                    const crt = mag.nb_cartons ?? Math.ceil((mag.quantite || mag.nb_exemplaires || 0) / exParCarton)
+                    return (
+                      <tr key={i} className={`border-b border-gray-50 last:border-0 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
+                        <td className="px-3 py-1.5 font-mono text-gray-500">{mag.code_pdv || mag.code_mag || '—'}</td>
+                        <td className="px-2 py-1.5 text-gray-700 max-w-[100px] truncate">{mag.nom_pdv || mag.nom_mag || mag.nom || '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-mono text-gray-700">{(mag.quantite || mag.nb_exemplaires || 0).toLocaleString()}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-gray-500">{crt}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-50 border-t border-gray-200">
+                    <td colSpan={2} className="px-3 py-1.5 text-xs font-medium text-gray-500">Total</td>
+                    <td className="px-2 py-1.5 text-right font-mono font-medium text-gray-700 text-xs">
+                      {p.nb_exemplaires.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-mono font-medium text-gray-700 text-xs">
+                      {nbCartons}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+
 
 interface PaletteRow {
   id: string
@@ -313,59 +451,19 @@ export default function Palettisation() {
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-3">
                     {pals.map(p => {
                       const isPdv = p.type_palette === 'pdv'
+                      const magasins: any[] = (() => {
+                        if (!p.magasins) return []
+                        try { return typeof p.magasins === 'string' ? JSON.parse(p.magasins) : p.magasins }
+                        catch { return [] }
+                      })()
                       return (
-                        <div key={p.id}
-                          className={`border rounded-lg p-3.5 ${isPdv ? 'bg-amber-50/40 border-amber-200' : 'bg-blue-50/40 border-blue-200'}`}
-                          data-selectable={JSON.stringify({
-                            type: isPdv ? 'palette_pdv' : 'palette_groupee',
-                            label: `Palette ${isPdv ? 'PDV' : 'GRP'} #${p.numero} — ${p.centrale_nom}`,
-                            data: {
-                              centrale: p.centrale_nom,
-                              numero: p.numero,
-                              type: p.type_palette,
-                              nb_exemplaires: p.nb_exemplaires,
-                              nb_cartons: p.nb_cartons,
-                              poids_kg: Math.round(p.poids_kg),
-                              taux_remplissage: p.taux_remplissage,
-                              code_pdv: p.code_pdv,
-                            }
-                          })}
-                          data-selectable-label={`Palette ${isPdv ? 'PDV' : 'GRP'} #${p.numero}`}
-                        >
-                          <div className="flex items-center justify-between mb-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${isPdv ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                                {isPdv ? 'PDV' : 'GRP'}
-                              </span>
-                              <span className="text-sm font-semibold text-gray-900">#{p.numero}</span>
-                            </div>
-                            {isPdv && p.code_pdv ? (
-                              <span className="text-xs font-mono font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-                                {p.code_pdv}
-                              </span>
-                            ) : p.taux_remplissage != null ? (
-                              <span className="text-xs text-gray-500">{Math.round(p.taux_remplissage * 100)}%</span>
-                            ) : null}
-                          </div>
-                          <div className="space-y-1 text-sm text-gray-600">
-                            <div className="flex justify-between">
-                              <span>Exemplaires</span>
-                              <span className="font-mono font-medium">{p.nb_exemplaires.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Cartons</span>
-                              <span className="font-mono">
-                                {p.nb_cartons != null
-                                  ? p.nb_cartons
-                                  : Math.ceil(p.nb_exemplaires / (conditionnement.ex_par_carton))}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Poids</span>
-                              <span className="font-mono">{Math.round(p.poids_kg)} kg</span>
-                            </div>
-                          </div>
-                        </div>
+                        <PaletteCard
+                          key={p.id}
+                          p={p}
+                          isPdv={isPdv}
+                          magasins={magasins}
+                          exParCarton={conditionnement.ex_par_carton}
+                        />
                       )
                     })}
                   </div>
