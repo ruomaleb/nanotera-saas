@@ -28,6 +28,7 @@ interface FormData {
   cartons_par_palette: string
   seuil_pdv: string
   poids_unitaire_kg: string
+  type_palette_id: string
   notes: string
 }
 
@@ -111,6 +112,7 @@ export default function NewOperation() {
     pagination: '', format_document: '', grammage: '',
     ex_par_paquet: '', ex_par_carton: '', cartons_par_palette: '', seuil_pdv: '',
     poids_unitaire_kg: '',
+    type_palette_id: '',
     notes: '',
   })
 
@@ -120,12 +122,14 @@ export default function NewOperation() {
   useEffect(() => {
     Promise.all([
       supabase.from('ref_enseignes').select('*').eq('actif', true).order('nom'),
+      supabase.from('ref_types_palette').select('id,nom,code,cartons_max,poids_max_kg,hauteur_max_cm,gerbable').eq('actif',true).order('nom'),
       supabase.from('ref_imprimeurs').select('*').order('nom'),
       supabase.from('ref_support_types').select('*, sous_categorie:ref_support_sous_categories(nom, code, categorie:ref_support_categories(nom))').order('nom'),
-    ]).then(([ens, imp, sup]) => {
+    ]).then(([ens, imp, sup, pal]) => {
       setEnseignes(ens.data ?? [])
       setImprimeurs(imp.data ?? [])
       setSupportTypes(sup.data ?? [])
+      setTypesPalette(pal.data ?? [])
     })
   }, [])
 
@@ -286,6 +290,7 @@ export default function NewOperation() {
       cartons_par_palette: form.cartons_par_palette ? parseInt(form.cartons_par_palette) : null,
       seuil_pdv: form.seuil_pdv ? parseInt(form.seuil_pdv) : null,
       poids_unitaire_kg: form.poids_unitaire_kg ? parseFloat(form.poids_unitaire_kg) : null,
+      type_palette_id: form.type_palette_id || null,
       notes: form.notes.trim() || null,
     }
 
@@ -505,6 +510,27 @@ export default function NewOperation() {
                     className={inputCls} placeholder="0.054" />
                 </FieldGroup>
               </div>
+            </div>
+
+            {/* Type de palette */}
+            <div>
+              <label className="text-xs text-stone-500 mb-1 block">Type de palette</label>
+              <select value={form.type_palette_id} onChange={e => set('type_palette_id', e.target.value)} className={selectCls}>
+                <option value="">Standard (défini par le transporteur)</option>
+                {typesPalette.map(tp => (
+                  <option key={tp.id} value={tp.id}>
+                    {tp.nom}{tp.code ? ` (${tp.code})` : ''} — {tp.cartons_max} crt, {tp.poids_max_kg} kg, {tp.hauteur_max_cm} cm{tp.gerbable ? ' · gerbable' : ''}
+                  </option>
+                ))}
+              </select>
+              {form.type_palette_id && (() => {
+                const tp = typesPalette.find(t => t.id === form.type_palette_id)
+                return tp ? (
+                  <div className="mt-1 text-[10px] text-indigo-600 bg-indigo-50 rounded px-2 py-1">
+                    Max {tp.cartons_max} cartons · {tp.poids_max_kg} kg · {tp.hauteur_max_cm} cm{tp.gerbable ? ' · gerbable' : ''}
+                  </div>
+                ) : null
+              })()}
             </div>
 
             <FieldGroup label="Notes / remarques">

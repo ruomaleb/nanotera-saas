@@ -19,6 +19,7 @@ import Dashboard from './pages/Dashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import { AdminGlobal, AdminEnseignes, AdminImprimeurs, AdminPrompts } from './pages/AdminPages'
 import AdminChatAnalysis from './pages/AdminChatAnalysis'
+import AdminTypesPalette from './pages/AdminTypesPalette'
 import AiChat from './components/AIChat'
 
 function AiChatWrapper() {
@@ -96,6 +97,7 @@ export default function App() {
         <Route path="/admin/imprimeurs" element={<AdminImprimeurs />} />
         <Route path="/admin/prompts" element={<AdminPrompts />} />
         <Route path="/admin/conversations" element={<AdminChatAnalysis />} />
+        <Route path="/admin/palettes" element={<AdminTypesPalette />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <AiChatWrapper />
