@@ -27,6 +27,7 @@ interface FormData {
   ex_par_carton: string
   cartons_par_palette: string
   seuil_pdv: string
+  poids_unitaire_kg: string
   notes: string
 }
 
@@ -69,10 +70,17 @@ function StepIndicator({ current }: { current: Step }) {
   )
 }
 
-function FieldGroup({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+function FieldGroup({ label, children, hint, source }: { label: string; children: React.ReactNode; hint?: string; source?: string }) {
   return (
     <div>
-      <label className="text-xs text-gray-500 block mb-1">{label}</label>
+      <label className="text-xs text-gray-500 block mb-1 flex items-center gap-1">
+        {label}
+        {source && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200 font-medium">
+            depuis {source}
+          </span>
+        )}
+      </label>
       {children}
       {hint && <div className="text-[10px] text-gray-400 mt-1">{hint}</div>}
     </div>
@@ -94,13 +102,15 @@ export default function NewOperation() {
   const [imprimeurs, setImprimeurs] = useState<Imprimeur[]>([])
   const [supportTypes, setSupportTypes] = useState<SupportType[]>([])
   const [linkedImprimeurs, setLinkedImprimeurs] = useState<string[]>([])
+  const [defaultSources, setDefaultSources] = useState<Record<string, string>>({})
 
   const [form, setForm] = useState<FormData>({
     enseigne_id: '', categorie: 'prospectus', sous_categorie: 'bal',
     code_operation: '', nom_operation: '', date_debut: '', date_fin: '',
     imprimeur_id: '', support_type_id: '',
-    pagination: '', format_document: '20x25', grammage: '60',
+    pagination: '', format_document: '', grammage: '',
     ex_par_paquet: '', ex_par_carton: '', cartons_par_palette: '', seuil_pdv: '',
+    poids_unitaire_kg: '',
     notes: '',
   })
 
@@ -119,20 +129,83 @@ export default function NewOperation() {
     })
   }, [])
 
-  // When enseigne changes: pre-fill conditionnement from defaults + load linked imprimeurs
+  // Quand l'enseigne change : charger les règles conditionnement_defaut (config_regles + enseigne)
   useEffect(() => {
     if (!form.enseigne_id) return
     const ens = enseignes.find(e => e.id === form.enseigne_id)
-    if (ens?.conditionnement_defaut) {
-      const cd = ens.conditionnement_defaut
-      setForm(prev => ({
-        ...prev,
-        ex_par_paquet: String(cd.ex_paquet ?? ''),
-        ex_par_carton: String(cd.ex_carton ?? ''),
-        cartons_par_palette: String(cd.cartons_palette ?? ''),
-        seuil_pdv: String(cd.seuil_pdv ?? ''),
-      }))
+
+    // Charger les règles config_regles catégorie conditionnement_defaut
+    const loadConditionnementDefauts = async () => {
+      const newSources: Record<string, string> = {}
+      const updates: Partial<FormData> = {}
+
+      // 1. Règles globales
+      const { data: globalRules } = await supabase
+        .from('config_regles')
+        .select('contenu, titre')
+        .eq('categorie', 'conditionnement_defaut')
+        .eq('niveau', 'global')
+        .eq('actif', true)
+        .order('priorite', { ascending: false })
+        .limit(1)
+      if (globalRules?.[0]) {
+        try {
+          const cd = JSON.parse(globalRules[0].contenu)
+          if (cd.ex_paquet)        { updates.ex_par_paquet      = String(cd.ex_paquet);        newSources.ex_par_paquet      = 'Global' }
+          if (cd.ex_carton)        { updates.ex_par_carton      = String(cd.ex_carton);        newSources.ex_par_carton      = 'Global' }
+          if (cd.cartons_palette)  { updates.cartons_par_palette = String(cd.cartons_palette); newSources.cartons_par_palette = 'Global' }
+          if (cd.seuil_pdv)        { updates.seuil_pdv          = String(cd.seuil_pdv);        newSources.seuil_pdv          = 'Global' }
+          if (cd.poids_unitaire_kg){ updates.poids_unitaire_kg  = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg  = 'Global' }
+          if (cd.grammage)         { updates.grammage           = String(cd.grammage);         newSources.grammage           = 'Global' }
+          if (cd.format_document)  { updates.format_document    = cd.format_document;          newSources.format_document    = 'Global' }
+        } catch {}
+      }
+
+      // 2. Règles enseigne (écrasent le global)
+      const { data: ensRules } = await supabase
+        .from('config_regles')
+        .select('contenu, titre')
+        .eq('categorie', 'conditionnement_defaut')
+        .eq('niveau', 'enseigne')
+        .eq('ref_id', form.enseigne_id)
+        .eq('actif', true)
+        .order('priorite', { ascending: false })
+        .limit(1)
+      if (ensRules?.[0]) {
+        try {
+          const cd = JSON.parse(ensRules[0].contenu)
+          const src = ens?.nom ?? 'Enseigne'
+          if (cd.ex_paquet)        { updates.ex_par_paquet      = String(cd.ex_paquet);        newSources.ex_par_paquet      = src }
+          if (cd.ex_carton)        { updates.ex_par_carton      = String(cd.ex_carton);        newSources.ex_par_carton      = src }
+          if (cd.cartons_palette)  { updates.cartons_par_palette = String(cd.cartons_palette); newSources.cartons_par_palette = src }
+          if (cd.seuil_pdv)        { updates.seuil_pdv          = String(cd.seuil_pdv);        newSources.seuil_pdv          = src }
+          if (cd.poids_unitaire_kg){ updates.poids_unitaire_kg  = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg  = src }
+          if (cd.grammage)         { updates.grammage           = String(cd.grammage);         newSources.grammage           = src }
+          if (cd.format_document)  { updates.format_document    = cd.format_document;          newSources.format_document    = src }
+        } catch {}
+      }
+
+      // 3. Fallback : conditionnement_defaut JSON sur l'enseigne (ancienne logique)
+      if (Object.keys(updates).length === 0 && ens?.conditionnement_defaut) {
+        const cd = ens.conditionnement_defaut
+        if (cd.ex_paquet)       { updates.ex_par_paquet      = String(cd.ex_paquet);       newSources.ex_par_paquet      = ens.nom }
+        if (cd.ex_carton)       { updates.ex_par_carton      = String(cd.ex_carton);       newSources.ex_par_carton      = ens.nom }
+        if (cd.cartons_palette) { updates.cartons_par_palette = String(cd.cartons_palette); newSources.cartons_par_palette = ens.nom }
+        if (cd.seuil_pdv)       { updates.seuil_pdv          = String(cd.seuil_pdv);       newSources.seuil_pdv          = ens.nom }
+      }
+      if (ens?.poids_reel_moyen && !updates.poids_unitaire_kg) {
+        updates.poids_unitaire_kg = String(ens.poids_reel_moyen)
+        newSources.poids_unitaire_kg = ens.nom
+      }
+
+      if (Object.keys(updates).length > 0) {
+        setForm(prev => ({ ...prev, ...updates }))
+        setDefaultSources(prev => ({ ...prev, ...newSources }))
+      }
     }
+
+    loadConditionnementDefauts()
+
     // Load imprimeurs linked to this enseigne
     supabase
       .from('jct_enseigne_imprimeur')
@@ -146,7 +219,38 @@ export default function NewOperation() {
           set('imprimeur_id', defaut.imprimeur_id)
         }
       })
-  }, [form.enseigne_id])
+  }, [form.enseigne_id, enseignes])
+
+
+  // Quand l'imprimeur change : charger les règles conditionnement_defaut imprimeur
+  useEffect(() => {
+    if (!form.imprimeur_id) return
+    supabase
+      .from('config_regles')
+      .select('contenu')
+      .eq('categorie', 'conditionnement_defaut')
+      .eq('niveau', 'imprimeur')
+      .eq('ref_id', form.imprimeur_id)
+      .eq('actif', true)
+      .order('priorite', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (!data?.[0]) return
+        try {
+          const cd = JSON.parse(data[0].contenu)
+          const imp = imprimeurs.find(i => i.id === form.imprimeur_id)
+          const src = imp?.nom ?? 'Imprimeur'
+          const updates: Partial<FormData> = {}
+          const newSources: Record<string, string> = {}
+          if (cd.ex_paquet)        { updates.ex_par_paquet      = String(cd.ex_paquet);        newSources.ex_par_paquet      = src }
+          if (cd.poids_unitaire_kg){ updates.poids_unitaire_kg  = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg  = src }
+          if (Object.keys(updates).length > 0) {
+            setForm(prev => ({ ...prev, ...updates }))
+            setDefaultSources(prev => ({ ...prev, ...newSources }))
+          }
+        } catch {}
+      })
+  }, [form.imprimeur_id, imprimeurs])
 
   const selectedEnseigne = enseignes.find(e => e.id === form.enseigne_id)
   const selectedImprimeur = imprimeurs.find(i => i.id === form.imprimeur_id)
@@ -181,6 +285,7 @@ export default function NewOperation() {
       ex_par_carton: form.ex_par_carton ? parseInt(form.ex_par_carton) : null,
       cartons_par_palette: form.cartons_par_palette ? parseInt(form.cartons_par_palette) : null,
       seuil_pdv: form.seuil_pdv ? parseInt(form.seuil_pdv) : null,
+      poids_unitaire_kg: form.poids_unitaire_kg ? parseFloat(form.poids_unitaire_kg) : null,
       notes: form.notes.trim() || null,
     }
 
@@ -360,11 +465,11 @@ export default function NewOperation() {
                   <input type="number" value={form.pagination} onChange={e => set('pagination', e.target.value)}
                     className={inputCls} placeholder="44" />
                 </FieldGroup>
-                <FieldGroup label="Format (cm)" hint="LxH : 20x25, 15x21...">
+                <FieldGroup label="Format (cm)" hint="LxH : 20x25, 15x21..." source={defaultSources.format_document}>
                   <input value={form.format_document} onChange={e => set('format_document', e.target.value)}
                     className={inputCls} placeholder="20x25" />
                 </FieldGroup>
-                <FieldGroup label="Grammage (g/m2)">
+                <FieldGroup label="Grammage (g/m2)" source={defaultSources.grammage}>
                   <input type="number" value={form.grammage} onChange={e => set('grammage', e.target.value)}
                     className={inputCls} placeholder="60" />
                 </FieldGroup>
@@ -379,21 +484,25 @@ export default function NewOperation() {
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <FieldGroup label="Exemplaires / paquet" hint="Sortie machine imprimeur">
+                <FieldGroup label="Exemplaires / paquet" hint="Sortie machine imprimeur" source={defaultSources.ex_par_paquet}>
                   <input type="number" value={form.ex_par_paquet} onChange={e => set('ex_par_paquet', e.target.value)}
                     className={inputCls} placeholder="100" />
                 </FieldGroup>
-                <FieldGroup label="Exemplaires / carton" hint="Mise sous carton Fretin">
+                <FieldGroup label="Exemplaires / carton" hint="Mise sous carton Fretin" source={defaultSources.ex_par_carton}>
                   <input type="number" value={form.ex_par_carton} onChange={e => set('ex_par_carton', e.target.value)}
                     className={inputCls} placeholder="200" />
                 </FieldGroup>
-                <FieldGroup label="Cartons / palette (max)">
+                <FieldGroup label="Cartons / palette (max)" source={defaultSources.cartons_par_palette}>
                   <input type="number" value={form.cartons_par_palette} onChange={e => set('cartons_par_palette', e.target.value)}
                     className={inputCls} placeholder="48" />
                 </FieldGroup>
-                <FieldGroup label="Seuil PDV (exemplaires)" hint="Au-dela → palette individuelle">
+                <FieldGroup label="Seuil PDV (exemplaires)" hint="Au-dela → palette individuelle" source={defaultSources.seuil_pdv}>
                   <input type="number" value={form.seuil_pdv} onChange={e => set('seuil_pdv', e.target.value)}
                     className={inputCls} placeholder="2800" />
+                </FieldGroup>
+                <FieldGroup label="Poids unitaire (kg/ex)" hint="Calcule depuis grammage/pagination si vide" source={defaultSources.poids_unitaire_kg}>
+                  <input type="number" step="0.001" value={form.poids_unitaire_kg} onChange={e => set('poids_unitaire_kg', e.target.value)}
+                    className={inputCls} placeholder="0.054" />
                 </FieldGroup>
               </div>
             </div>
@@ -415,6 +524,7 @@ export default function NewOperation() {
                 <div>Validite : <span className="font-medium text-gray-900">{form.date_debut && form.date_fin ? `${form.date_debut} → ${form.date_fin}` : 'A definir'}</span></div>
                 {form.pagination && <div>Document : <span className="font-medium text-gray-900">{form.pagination}p, {form.format_document}, {form.grammage} g/m2</span></div>}
                 <div>Conditionnement : <span className="font-medium text-gray-900">{form.ex_par_paquet}/{form.ex_par_carton}/{form.cartons_par_palette}, seuil {form.seuil_pdv}</span></div>
+                {form.poids_unitaire_kg && <div>Poids/ex : <span className="font-medium text-gray-900">{form.poids_unitaire_kg} kg</span></div>}
               </div>
             </div>
           </div>
