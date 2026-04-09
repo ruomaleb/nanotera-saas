@@ -24,6 +24,8 @@ interface FormData {
   // Étape 3 — Document & impression
   format_fini:             string
   format_devise:           string
+  optimisation_acceptee:   boolean
+  optimisation_cotes:      string
   pagination:              string
   pagination_interieure:   string
   pagination_couverture:   string
@@ -34,6 +36,9 @@ interface FormData {
   type_encre:              string
   profil_icc:              string
   pct_fibre_recyclee:      string
+  papier_couverture:       string
+  grammage_couverture:     string
+  pct_fibre_recyclee_couverture: string
   nb_repiquages_noir:      string
   nb_repiquages_quadri:    string
   procede_impression:      string
@@ -148,10 +153,11 @@ export default function NewOperation() {
     enseigne_id: '', categorie: 'prospectus', sous_categorie: 'bal',
     code_operation: '', nom_operation: '', date_debut: '', date_fin: '',
     qte_estimatives: '', particularites: '',
-    format_fini: '', format_devise: '',
+    format_fini: '', format_devise: '', optimisation_acceptee: false, optimisation_cotes: '',
     pagination: '', pagination_interieure: '', pagination_couverture: '0',
     faconnage: '', brochage: '', type_colle: '', grammage: '',
     type_encre: 'Sans huiles minérales', profil_icc: '', pct_fibre_recyclee: '',
+    papier_couverture: '', grammage_couverture: '', pct_fibre_recyclee_couverture: '',
     nb_repiquages_noir: '', nb_repiquages_quadri: '0',
     procede_impression: 'Offset', pays_impression: '', imprimeur_id: '',
     support_type_id: '', date_depot_fichier: '', date_livraison_maxi: '',
@@ -159,7 +165,7 @@ export default function NewOperation() {
     poids_unitaire_kg: '', type_palette_id: '', notes: '',
   })
 
-  const set = (k: keyof FormData, v: string) => setForm(p => ({ ...p, [k]: v }))
+  const set = (k: keyof FormData, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
 
   // Charger les référentiels
   useEffect(() => {
@@ -293,6 +299,8 @@ export default function NewOperation() {
       format_document:        form.format_devise || form.format_fini || null,
       format_fini:            form.format_fini || null,
       format_devise:          form.format_devise || null,
+      optimisation_acceptee:  form.optimisation_acceptee,
+      optimisation_cotes:     form.optimisation_cotes.trim() || null,
       pagination:             form.pagination ? parseInt(form.pagination) : null,
       pagination_interieure:  form.pagination_interieure ? parseInt(form.pagination_interieure) : null,
       pagination_couverture:  form.pagination_couverture ? parseInt(form.pagination_couverture) : 0,
@@ -303,6 +311,9 @@ export default function NewOperation() {
       type_encre:             form.type_encre || null,
       profil_icc:             form.profil_icc || null,
       pct_fibre_recyclee:     form.pct_fibre_recyclee ? parseInt(form.pct_fibre_recyclee) : null,
+      papier_couverture:      form.papier_couverture || null,
+      grammage_couverture:    form.grammage_couverture ? parseFloat(form.grammage_couverture) : null,
+      pct_fibre_recyclee_couverture: form.pct_fibre_recyclee_couverture ? parseInt(form.pct_fibre_recyclee_couverture) : null,
       nb_repiquages_noir:     form.nb_repiquages_noir ? parseInt(form.nb_repiquages_noir) : 0,
       nb_repiquages_quadri:   form.nb_repiquages_quadri ? parseInt(form.nb_repiquages_quadri) : 0,
       procede_impression:     form.procede_impression || null,
@@ -463,6 +474,26 @@ export default function NewOperation() {
               </FieldGroup>
             </div>
 
+            {/* Optimisation format */}
+            <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-lg border border-stone-200">
+              <input type="checkbox" id="optim" checked={form.optimisation_acceptee}
+                onChange={e => set('optimisation_acceptee', e.target.checked)}
+                className="w-4 h-4 accent-brand-500 flex-shrink-0" />
+              <div className="flex-1">
+                <label htmlFor="optim" className="text-sm text-stone-700 cursor-pointer">
+                  Optimisation de format acceptée
+                </label>
+                <div className="text-xs text-stone-400 mt-0.5">L'imprimeur peut adapter les cotes dans une plage définie</div>
+              </div>
+            </div>
+            {form.optimisation_acceptee && (
+              <FieldGroup label="Plage d'optimisation (cm)" hint="Ex: L : 19,5-20 | H : 25-26">
+                <input value={form.optimisation_cotes}
+                  onChange={e => set('optimisation_cotes', e.target.value)}
+                  className={inputCls} placeholder="L : 19,5-20 | H : 25-26" />
+              </FieldGroup>
+            )}
+
             <SectionTitle>Finition</SectionTitle>
             <div className="grid grid-cols-2 gap-3">
               <FieldGroup label="Façonnage">
@@ -508,6 +539,28 @@ export default function NewOperation() {
                   {['SC Paper', 'Iso Coated V2', 'Fogra 39', 'Autre'].map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </FieldGroup>
+            </div>
+
+            <SectionTitle>Couverture (si différente du cahier)</SectionTitle>
+            <div className="grid grid-cols-3 gap-3">
+              <FieldGroup label="Type papier couverture">
+                <select value={form.papier_couverture} onChange={e => set('papier_couverture', e.target.value)} className={selectCls}>
+                  <option value="">Identique au cahier</option>
+                  {['Satiné A', 'MWC', 'Couché mat', 'Offset', 'Autre'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </FieldGroup>
+              {form.papier_couverture && <>
+                <FieldGroup label="Grammage couverture (g/m²)">
+                  <input type="number" value={form.grammage_couverture}
+                    onChange={e => set('grammage_couverture', e.target.value)}
+                    className={inputCls} placeholder="135" />
+                </FieldGroup>
+                <FieldGroup label="% fibre recyclée couv.">
+                  <input type="number" value={form.pct_fibre_recyclee_couverture}
+                    onChange={e => set('pct_fibre_recyclee_couverture', e.target.value)}
+                    className={inputCls} placeholder="0" />
+                </FieldGroup>
+              </>}
             </div>
 
             <SectionTitle>Repiquages</SectionTitle>
