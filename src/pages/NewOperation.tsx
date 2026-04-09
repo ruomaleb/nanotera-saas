@@ -5,64 +5,96 @@ import { useOrg } from '../hooks/useOrg'
 import { ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react'
 import type { Enseigne, Imprimeur, SupportType } from '../types/database'
 
-type Step = 1 | 2 | 3
+type Step = 1 | 2 | 3 | 4
 
 interface FormData {
-  // Step 1
-  enseigne_id: string
-  categorie: 'prospectus' | 'plv'
+  // Étape 1 — Enseigne & type
+  enseigne_id:   string
+  categorie:     'prospectus' | 'plv'
   sous_categorie: string
-  // Step 2
-  code_operation: string
-  nom_operation: string
-  date_debut: string
-  date_fin: string
-  imprimeur_id: string
-  support_type_id: string
-  // Step 3
-  pagination: string
-  format_document: string
-  grammage: string
-  ex_par_paquet: string
-  ex_par_carton: string
-  cartons_par_palette: string
-  seuil_pdv: string
-  poids_unitaire_kg: string
-  type_palette_id: string
-  notes: string
+
+  // Étape 2 — Opération
+  code_operation:  string
+  nom_operation:   string
+  date_debut:      string
+  date_fin:        string
+  qte_estimatives: string
+  particularites:  string
+
+  // Étape 3 — Document & impression
+  format_fini:             string
+  format_devise:           string
+  pagination:              string
+  pagination_interieure:   string
+  pagination_couverture:   string
+  faconnage:               string
+  brochage:                string
+  type_colle:              string
+  grammage:                string
+  type_encre:              string
+  profil_icc:              string
+  pct_fibre_recyclee:      string
+  nb_repiquages_noir:      string
+  nb_repiquages_quadri:    string
+  procede_impression:      string
+  pays_impression:         string
+  imprimeur_id:            string
+  support_type_id:         string
+  date_depot_fichier:      string
+  date_livraison_maxi:     string
+
+  // Étape 4 — Logistique
+  ex_par_paquet:        string
+  ex_par_carton:        string
+  cartons_par_palette:  string
+  seuil_pdv:            string
+  poids_unitaire_kg:    string
+  type_palette_id:      string
+  notes:                string
 }
 
-const SOUS_CAT_OPTIONS: Record<string, { value: string; label: string }[]> = {
+const SOUS_CAT: Record<string, { value: string; label: string }[]> = {
   prospectus: [
-    { value: 'bal', label: 'Distribution BAL' },
-    { value: 'adc', label: 'Arriere de caisse' },
+    { value: 'bal',  label: 'Distribution BAL' },
+    { value: 'adc',  label: 'Arrière de caisse' },
   ],
   plv: [
-    { value: 'flat', label: 'Flat print' },
-    { value: 'volume', label: 'Volume' },
-    { value: 'mixte', label: 'Mixte' },
+    { value: 'flat',       label: 'Flat print' },
+    { value: 'volume',     label: 'Volume' },
+    { value: 'mixte',      label: 'Mixte' },
     { value: 'trade_mktg', label: 'Trade marketing' },
   ],
 }
 
-const STEP_LABELS = ['Enseigne & type', 'Details operation', 'Specs & conditionnement']
+const STEP_LABELS = [
+  'Enseigne & type',
+  'Opération',
+  'Document & impression',
+  'Logistique',
+]
+
+const inputCls  = "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-brand-400"
+const selectCls = `${inputCls} bg-white`
 
 function StepIndicator({ current }: { current: Step }) {
   return (
     <div className="flex items-center gap-1 mb-6">
       {STEP_LABELS.map((label, i) => {
         const step = (i + 1) as Step
-        const done = step < current
+        const done   = step < current
         const active = step === current
         return (
           <div key={step} className="flex items-center gap-1">
-            {i > 0 && <div className={`w-8 h-px ${done || active ? 'bg-indigo-300' : 'bg-gray-200'}`} />}
+            {i > 0 && <div className={`w-6 h-px ${done || active ? 'bg-brand-300' : 'bg-stone-200'}`} />}
             <div className="flex items-center gap-1.5">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-medium
-                ${done ? 'bg-indigo-500 text-white' : active ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-300' : 'bg-gray-100 text-gray-400'}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                done   ? 'bg-brand-500 text-white' :
+                active ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-300' :
+                         'bg-stone-100 text-stone-400'
+              }`}>
                 {done ? <Check size={12} /> : step}
               </div>
-              <span className={`text-xs ${active ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>{label}</span>
+              <span className={`text-xs hidden sm:block ${active ? 'text-stone-900 font-medium' : 'text-stone-400'}`}>{label}</span>
             </div>
           </div>
         )
@@ -71,60 +103,71 @@ function StepIndicator({ current }: { current: Step }) {
   )
 }
 
-function FieldGroup({ label, children, hint, source }: { label: string; children: React.ReactNode; hint?: string; source?: string }) {
+function FieldGroup({ label, children, hint, source }: {
+  label: string; children: React.ReactNode; hint?: string; source?: string
+}) {
   return (
     <div>
-      <label className="text-xs text-gray-500 block mb-1 flex items-center gap-1">
+      <label className="text-xs text-stone-500 mb-1 flex items-center gap-1.5">
         {label}
         {source && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200 font-medium">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-600 border border-brand-200 font-medium">
             depuis {source}
           </span>
         )}
       </label>
       {children}
-      {hint && <div className="text-[10px] text-gray-400 mt-1">{hint}</div>}
+      {hint && <div className="text-[10px] text-stone-400 mt-1">{hint}</div>}
     </div>
   )
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-300"
-const selectCls = `${inputCls} bg-white`
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-xs font-semibold text-stone-400 uppercase tracking-wide pt-2 pb-1 border-b border-stone-100 mb-3">
+      {children}
+    </div>
+  )
+}
 
 export default function NewOperation() {
   const navigate = useNavigate()
-  const { org } = useOrg()
-  const [step, setStep] = useState<Step>(1)
+  const { org }  = useOrg()
+  const [step, setStep]   = useState<Step>(1)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError]   = useState('')
 
-  // Reference data
-  const [enseignes, setEnseignes] = useState<Enseigne[]>([])
+  const [enseignes, setEnseignes]   = useState<Enseigne[]>([])
   const [imprimeurs, setImprimeurs] = useState<Imprimeur[]>([])
-  const [supportTypes, setSupportTypes] = useState<SupportType[]>([])
+  const [supportTypes, setSupportTypes]   = useState<SupportType[]>([])
   const [linkedImprimeurs, setLinkedImprimeurs] = useState<string[]>([])
+  const [typesPalette, setTypesPalette] = useState<any[]>([])
   const [defaultSources, setDefaultSources] = useState<Record<string, string>>({})
 
   const [form, setForm] = useState<FormData>({
     enseigne_id: '', categorie: 'prospectus', sous_categorie: 'bal',
     code_operation: '', nom_operation: '', date_debut: '', date_fin: '',
-    imprimeur_id: '', support_type_id: '',
-    pagination: '', format_document: '', grammage: '',
+    qte_estimatives: '', particularites: '',
+    format_fini: '', format_devise: '',
+    pagination: '', pagination_interieure: '', pagination_couverture: '0',
+    faconnage: '', brochage: '', type_colle: '', grammage: '',
+    type_encre: 'Sans huiles minérales', profil_icc: '', pct_fibre_recyclee: '',
+    nb_repiquages_noir: '', nb_repiquages_quadri: '0',
+    procede_impression: 'Offset', pays_impression: '', imprimeur_id: '',
+    support_type_id: '', date_depot_fichier: '', date_livraison_maxi: '',
     ex_par_paquet: '', ex_par_carton: '', cartons_par_palette: '', seuil_pdv: '',
-    poids_unitaire_kg: '',
-    type_palette_id: '',
-    notes: '',
+    poids_unitaire_kg: '', type_palette_id: '', notes: '',
   })
 
-  const set = (field: keyof FormData, value: string) => setForm(prev => ({ ...prev, [field]: value }))
+  const set = (k: keyof FormData, v: string) => setForm(p => ({ ...p, [k]: v }))
 
-  // Load reference data
+  // Charger les référentiels
   useEffect(() => {
     Promise.all([
       supabase.from('ref_enseignes').select('*').eq('actif', true).order('nom'),
-      supabase.from('ref_types_palette').select('id,nom,code,cartons_max,poids_max_kg,hauteur_max_cm,gerbable').eq('actif',true).order('nom'),
       supabase.from('ref_imprimeurs').select('*').order('nom'),
       supabase.from('ref_support_types').select('*, sous_categorie:ref_support_sous_categories(nom, code, categorie:ref_support_categories(nom))').order('nom'),
+      supabase.from('ref_types_palette').select('id,nom,code,cartons_max,poids_max_kg,hauteur_max_cm,gerbable').eq('actif', true).order('nom'),
     ]).then(([ens, imp, sup, pal]) => {
       setEnseignes(ens.data ?? [])
       setImprimeurs(imp.data ?? [])
@@ -133,69 +176,47 @@ export default function NewOperation() {
     })
   }, [])
 
-  // Quand l'enseigne change : charger les règles conditionnement_defaut (config_regles + enseigne)
+  // Quand enseigne change : pré-remplir conditionnement depuis config_regles
   useEffect(() => {
     if (!form.enseigne_id) return
     const ens = enseignes.find(e => e.id === form.enseigne_id)
 
-    // Charger les règles config_regles catégorie conditionnement_defaut
-    const loadConditionnementDefauts = async () => {
+    const loadDefaults = async () => {
       const newSources: Record<string, string> = {}
       const updates: Partial<FormData> = {}
 
-      // 1. Règles globales
-      const { data: globalRules } = await supabase
-        .from('config_regles')
-        .select('contenu, titre')
-        .eq('categorie', 'conditionnement_defaut')
-        .eq('niveau', 'global')
-        .eq('actif', true)
-        .order('priorite', { ascending: false })
-        .limit(1)
-      if (globalRules?.[0]) {
+      // Règles globales
+      const { data: gRules } = await supabase.from('config_regles').select('contenu')
+        .eq('categorie', 'conditionnement_defaut').eq('niveau', 'global').eq('actif', true)
+        .order('priorite', { ascending: false }).limit(1)
+      if (gRules?.[0]) {
         try {
-          const cd = JSON.parse(globalRules[0].contenu)
-          if (cd.ex_paquet)        { updates.ex_par_paquet      = String(cd.ex_paquet);        newSources.ex_par_paquet      = 'Global' }
-          if (cd.ex_carton)        { updates.ex_par_carton      = String(cd.ex_carton);        newSources.ex_par_carton      = 'Global' }
-          if (cd.cartons_palette)  { updates.cartons_par_palette = String(cd.cartons_palette); newSources.cartons_par_palette = 'Global' }
-          if (cd.seuil_pdv)        { updates.seuil_pdv          = String(cd.seuil_pdv);        newSources.seuil_pdv          = 'Global' }
-          if (cd.poids_unitaire_kg){ updates.poids_unitaire_kg  = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg  = 'Global' }
-          if (cd.grammage)         { updates.grammage           = String(cd.grammage);         newSources.grammage           = 'Global' }
-          if (cd.format_document)  { updates.format_document    = cd.format_document;          newSources.format_document    = 'Global' }
+          const cd = JSON.parse(gRules[0].contenu)
+          if (cd.ex_paquet)         { updates.ex_par_paquet       = String(cd.ex_paquet);        newSources.ex_par_paquet       = 'Global' }
+          if (cd.ex_carton)         { updates.ex_par_carton       = String(cd.ex_carton);        newSources.ex_par_carton       = 'Global' }
+          if (cd.cartons_palette)   { updates.cartons_par_palette = String(cd.cartons_palette);  newSources.cartons_par_palette = 'Global' }
+          if (cd.seuil_pdv)         { updates.seuil_pdv           = String(cd.seuil_pdv);        newSources.seuil_pdv           = 'Global' }
+          if (cd.poids_unitaire_kg) { updates.poids_unitaire_kg   = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg   = 'Global' }
+          if (cd.grammage)          { updates.grammage            = String(cd.grammage);         newSources.grammage            = 'Global' }
         } catch {}
       }
 
-      // 2. Règles enseigne (écrasent le global)
-      const { data: ensRules } = await supabase
-        .from('config_regles')
-        .select('contenu, titre')
-        .eq('categorie', 'conditionnement_defaut')
-        .eq('niveau', 'enseigne')
-        .eq('ref_id', form.enseigne_id)
-        .eq('actif', true)
-        .order('priorite', { ascending: false })
-        .limit(1)
-      if (ensRules?.[0]) {
+      // Règles enseigne (prioritaires)
+      const { data: eRules } = await supabase.from('config_regles').select('contenu')
+        .eq('categorie', 'conditionnement_defaut').eq('niveau', 'enseigne')
+        .eq('ref_id', form.enseigne_id).eq('actif', true)
+        .order('priorite', { ascending: false }).limit(1)
+      if (eRules?.[0]) {
         try {
-          const cd = JSON.parse(ensRules[0].contenu)
+          const cd = JSON.parse(eRules[0].contenu)
           const src = ens?.nom ?? 'Enseigne'
-          if (cd.ex_paquet)        { updates.ex_par_paquet      = String(cd.ex_paquet);        newSources.ex_par_paquet      = src }
-          if (cd.ex_carton)        { updates.ex_par_carton      = String(cd.ex_carton);        newSources.ex_par_carton      = src }
-          if (cd.cartons_palette)  { updates.cartons_par_palette = String(cd.cartons_palette); newSources.cartons_par_palette = src }
-          if (cd.seuil_pdv)        { updates.seuil_pdv          = String(cd.seuil_pdv);        newSources.seuil_pdv          = src }
-          if (cd.poids_unitaire_kg){ updates.poids_unitaire_kg  = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg  = src }
-          if (cd.grammage)         { updates.grammage           = String(cd.grammage);         newSources.grammage           = src }
-          if (cd.format_document)  { updates.format_document    = cd.format_document;          newSources.format_document    = src }
+          if (cd.ex_paquet)         { updates.ex_par_paquet       = String(cd.ex_paquet);        newSources.ex_par_paquet       = src }
+          if (cd.ex_carton)         { updates.ex_par_carton       = String(cd.ex_carton);        newSources.ex_par_carton       = src }
+          if (cd.cartons_palette)   { updates.cartons_par_palette = String(cd.cartons_palette);  newSources.cartons_par_palette = src }
+          if (cd.seuil_pdv)         { updates.seuil_pdv           = String(cd.seuil_pdv);        newSources.seuil_pdv           = src }
+          if (cd.poids_unitaire_kg) { updates.poids_unitaire_kg   = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg   = src }
+          if (cd.grammage)          { updates.grammage            = String(cd.grammage);         newSources.grammage            = src }
         } catch {}
-      }
-
-      // 3. Fallback : conditionnement_defaut JSON sur l'enseigne (ancienne logique)
-      if (Object.keys(updates).length === 0 && ens?.conditionnement_defaut) {
-        const cd = ens.conditionnement_defaut
-        if (cd.ex_paquet)       { updates.ex_par_paquet      = String(cd.ex_paquet);       newSources.ex_par_paquet      = ens.nom }
-        if (cd.ex_carton)       { updates.ex_par_carton      = String(cd.ex_carton);       newSources.ex_par_carton      = ens.nom }
-        if (cd.cartons_palette) { updates.cartons_par_palette = String(cd.cartons_palette); newSources.cartons_par_palette = ens.nom }
-        if (cd.seuil_pdv)       { updates.seuil_pdv          = String(cd.seuil_pdv);       newSources.seuil_pdv          = ens.nom }
       }
       if (ens?.poids_reel_moyen && !updates.poids_unitaire_kg) {
         updates.poids_unitaire_kg = String(ens.poids_reel_moyen)
@@ -207,37 +228,25 @@ export default function NewOperation() {
         setDefaultSources(prev => ({ ...prev, ...newSources }))
       }
     }
+    loadDefaults()
 
-    loadConditionnementDefauts()
-
-    // Load imprimeurs linked to this enseigne
-    supabase
-      .from('jct_enseigne_imprimeur')
-      .select('imprimeur_id, est_defaut')
+    supabase.from('jct_enseigne_imprimeur').select('imprimeur_id, est_defaut')
       .eq('enseigne_id', form.enseigne_id)
       .then(({ data }) => {
         const ids = data?.map(d => d.imprimeur_id) ?? []
         setLinkedImprimeurs(ids)
         const defaut = data?.find(d => d.est_defaut)
-        if (defaut && !form.imprimeur_id) {
-          set('imprimeur_id', defaut.imprimeur_id)
-        }
+        if (defaut && !form.imprimeur_id) set('imprimeur_id', defaut.imprimeur_id)
       })
   }, [form.enseigne_id, enseignes])
 
-
-  // Quand l'imprimeur change : charger les règles conditionnement_defaut imprimeur
+  // Quand imprimeur change : règles imprimeur
   useEffect(() => {
     if (!form.imprimeur_id) return
-    supabase
-      .from('config_regles')
-      .select('contenu')
-      .eq('categorie', 'conditionnement_defaut')
-      .eq('niveau', 'imprimeur')
-      .eq('ref_id', form.imprimeur_id)
-      .eq('actif', true)
-      .order('priorite', { ascending: false })
-      .limit(1)
+    supabase.from('config_regles').select('contenu')
+      .eq('categorie', 'conditionnement_defaut').eq('niveau', 'imprimeur')
+      .eq('ref_id', form.imprimeur_id).eq('actif', true)
+      .order('priorite', { ascending: false }).limit(1)
       .then(({ data }) => {
         if (!data?.[0]) return
         try {
@@ -246,8 +255,8 @@ export default function NewOperation() {
           const src = imp?.nom ?? 'Imprimeur'
           const updates: Partial<FormData> = {}
           const newSources: Record<string, string> = {}
-          if (cd.ex_paquet)        { updates.ex_par_paquet      = String(cd.ex_paquet);        newSources.ex_par_paquet      = src }
-          if (cd.poids_unitaire_kg){ updates.poids_unitaire_kg  = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg  = src }
+          if (cd.ex_paquet)         { updates.ex_par_paquet     = String(cd.ex_paquet);        newSources.ex_par_paquet     = src }
+          if (cd.poids_unitaire_kg) { updates.poids_unitaire_kg = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg = src }
           if (Object.keys(updates).length > 0) {
             setForm(prev => ({ ...prev, ...updates }))
             setDefaultSources(prev => ({ ...prev, ...newSources }))
@@ -256,80 +265,89 @@ export default function NewOperation() {
       })
   }, [form.imprimeur_id, imprimeurs])
 
-  const selectedEnseigne = enseignes.find(e => e.id === form.enseigne_id)
+  const selectedEnseigne  = enseignes.find(e => e.id === form.enseigne_id)
   const selectedImprimeur = imprimeurs.find(i => i.id === form.imprimeur_id)
 
-  // Validation per step
-  const canNext = (s: Step): boolean => {
+  const canNext = (s: Step) => {
     if (s === 1) return !!form.enseigne_id && !!form.categorie
     if (s === 2) return !!form.code_operation.trim()
     return true
   }
 
   const handleCreate = async () => {
-    setSaving(true)
-    setError('')
-
+    setSaving(true); setError('')
     const payload = {
-      org_id: org?.org_id,
-      enseigne_id: form.enseigne_id,
-      categorie: form.categorie,
+      org_id:        org?.org_id,
+      enseigne_id:   form.enseigne_id,
+      categorie:     form.categorie,
       sous_categorie: form.sous_categorie || null,
-      code_operation: form.code_operation.trim(),
-      nom_operation: form.nom_operation.trim() || null,
-      date_debut: form.date_debut || null,
-      date_fin: form.date_fin || null,
-      imprimeur_id: form.imprimeur_id || null,
-      support_type_id: form.support_type_id || null,
-      statut: 'planifie',
-      pagination: form.pagination ? parseInt(form.pagination) : null,
-      format_document: form.format_document || null,
-      grammage: form.grammage ? parseFloat(form.grammage) : null,
-      ex_par_paquet: form.ex_par_paquet ? parseInt(form.ex_par_paquet) : null,
-      ex_par_carton: form.ex_par_carton ? parseInt(form.ex_par_carton) : null,
-      cartons_par_palette: form.cartons_par_palette ? parseInt(form.cartons_par_palette) : null,
-      seuil_pdv: form.seuil_pdv ? parseInt(form.seuil_pdv) : null,
-      poids_unitaire_kg: form.poids_unitaire_kg ? parseFloat(form.poids_unitaire_kg) : null,
-      type_palette_id: form.type_palette_id || null,
-      notes: form.notes.trim() || null,
+      statut:        'planifie',
+      // Étape 2
+      code_operation:  form.code_operation.trim(),
+      nom_operation:   form.nom_operation.trim() || null,
+      date_debut:      form.date_debut || null,
+      date_fin:        form.date_fin || null,
+      qte_estimatives: form.qte_estimatives ? parseInt(form.qte_estimatives) : null,
+      particularites:  form.particularites.trim() || null,
+      // Étape 3 — document
+      format_document:        form.format_devise || form.format_fini || null,
+      format_fini:            form.format_fini || null,
+      format_devise:          form.format_devise || null,
+      pagination:             form.pagination ? parseInt(form.pagination) : null,
+      pagination_interieure:  form.pagination_interieure ? parseInt(form.pagination_interieure) : null,
+      pagination_couverture:  form.pagination_couverture ? parseInt(form.pagination_couverture) : 0,
+      faconnage:              form.faconnage || null,
+      brochage:               form.brochage || null,
+      type_colle:             form.type_colle || null,
+      grammage:               form.grammage ? parseFloat(form.grammage) : null,
+      type_encre:             form.type_encre || null,
+      profil_icc:             form.profil_icc || null,
+      pct_fibre_recyclee:     form.pct_fibre_recyclee ? parseInt(form.pct_fibre_recyclee) : null,
+      nb_repiquages_noir:     form.nb_repiquages_noir ? parseInt(form.nb_repiquages_noir) : 0,
+      nb_repiquages_quadri:   form.nb_repiquages_quadri ? parseInt(form.nb_repiquages_quadri) : 0,
+      procede_impression:     form.procede_impression || null,
+      pays_impression:        form.pays_impression || null,
+      imprimeur_id:           form.imprimeur_id || null,
+      support_type_id:        form.support_type_id || null,
+      date_depot_fichier:     form.date_depot_fichier || null,
+      date_livraison_maxi:    form.date_livraison_maxi || null,
+      // Étape 4 — logistique
+      ex_par_paquet:          form.ex_par_paquet ? parseInt(form.ex_par_paquet) : null,
+      ex_par_carton:          form.ex_par_carton ? parseInt(form.ex_par_carton) : null,
+      cartons_par_palette:    form.cartons_par_palette ? parseInt(form.cartons_par_palette) : null,
+      seuil_pdv:              form.seuil_pdv ? parseInt(form.seuil_pdv) : null,
+      poids_unitaire_kg:      form.poids_unitaire_kg ? parseFloat(form.poids_unitaire_kg) : null,
+      type_palette_id:        form.type_palette_id || null,
+      notes:                  form.notes.trim() || null,
     }
 
-    const { data, error: err } = await supabase
-      .from('ops_operations')
-      .insert(payload)
-      .select('id')
-      .single()
-
-    if (err) {
-      setError(err.message)
-      setSaving(false)
-      return
-    }
-
+    const { data, error: err } = await supabase.from('ops_operations').insert(payload).select('id').single()
+    if (err) { setError(err.message); setSaving(false); return }
     navigate('/operations')
   }
 
   return (
     <div>
-      <div className="px-5 py-4 border-b border-gray-200 flex items-center gap-3">
-        <button onClick={() => navigate('/operations')} className="text-gray-400 hover:text-gray-600">
+      <div className="px-5 py-4 border-b border-stone-200 flex items-center gap-3">
+        <button onClick={() => step > 1 ? setStep((step - 1) as Step) : navigate('/operations')}
+          className="text-stone-400 hover:text-stone-600">
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h1 className="text-base font-semibold text-gray-900">Nouvelle operation</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Etape {step} sur 3 — {STEP_LABELS[step - 1]}</p>
+          <h1 className="text-base font-semibold text-stone-900">Nouvelle opération</h1>
+          <p className="text-xs text-stone-400 mt-0.5">Étape {step} / 4 — {STEP_LABELS[step - 1]}</p>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-5 py-6">
         <StepIndicator current={step} />
 
-        {/* Step 1: Enseigne & Type */}
+        {/* ── Étape 1 : Enseigne & type ── */}
         {step === 1 && (
           <div className="space-y-4">
             <FieldGroup label="Enseigne *">
               <select value={form.enseigne_id} onChange={e => set('enseigne_id', e.target.value)} className={selectCls}>
-                <option value="">Selectionner une enseigne</option>
+                <option value="">Sélectionner une enseigne</option>
                 {enseignes.map(e => (
                   <option key={e.id} value={e.id}>{e.nom} {e.code_court ? `(${e.code_court})` : ''}</option>
                 ))}
@@ -337,53 +355,38 @@ export default function NewOperation() {
             </FieldGroup>
 
             {selectedEnseigne && (
-              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
+              <div className="bg-stone-50 rounded-lg p-3 text-xs text-stone-600">
                 <div className="font-medium mb-1">{selectedEnseigne.nom}</div>
-                <div className="flex gap-4">
-                  <span>Format : {selectedEnseigne.format_fichier ?? 'non defini'}</span>
-                  {selectedEnseigne.poids_reel_moyen && <span>Poids reel : {selectedEnseigne.poids_reel_moyen} kg/ex</span>}
-                </div>
-                {selectedEnseigne.conditionnement_defaut && (
-                  <div className="flex gap-4 mt-1 text-gray-400">
-                    <span>{selectedEnseigne.conditionnement_defaut.ex_paquet} ex/paq</span>
-                    <span>{selectedEnseigne.conditionnement_defaut.ex_carton} ex/crt</span>
-                    <span>{selectedEnseigne.conditionnement_defaut.cartons_palette} crt/pal</span>
-                    <span>seuil PDV {selectedEnseigne.conditionnement_defaut.seuil_pdv?.toLocaleString()}</span>
-                  </div>
-                )}
+                <div className="text-stone-400">Format fichier : {selectedEnseigne.format_fichier ?? 'non défini'}</div>
               </div>
             )}
 
-            <FieldGroup label="Categorie *">
+            <FieldGroup label="Catégorie *">
               <div className="flex gap-2">
                 {(['prospectus', 'plv'] as const).map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => { set('categorie', cat); set('sous_categorie', SOUS_CAT_OPTIONS[cat][0].value) }}
-                    className={`flex-1 py-2.5 rounded-lg text-sm transition-colors border ${
+                  <button key={cat} type="button"
+                    onClick={() => set('categorie', cat)}
+                    className={`flex-1 py-2 text-sm rounded-lg border transition-all ${
                       form.categorie === cat
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium'
-                        : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                    }`}
-                  >
+                        ? 'border-brand-400 bg-brand-50 text-brand-700 font-medium'
+                        : 'border-stone-200 text-stone-500 hover:border-stone-300'
+                    }`}>
                     {cat === 'prospectus' ? 'Prospectus' : 'PLV'}
                   </button>
                 ))}
               </div>
             </FieldGroup>
 
-            <FieldGroup label="Sous-categorie">
-              <div className="flex flex-wrap gap-2">
-                {SOUS_CAT_OPTIONS[form.categorie].map(sc => (
-                  <button
-                    key={sc.value}
+            <FieldGroup label="Sous-catégorie">
+              <div className="flex gap-2 flex-wrap">
+                {SOUS_CAT[form.categorie].map(sc => (
+                  <button key={sc.value} type="button"
                     onClick={() => set('sous_categorie', sc.value)}
-                    className={`px-3 py-1.5 rounded-lg text-xs transition-colors border ${
+                    className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
                       form.sous_categorie === sc.value
-                        ? 'bg-teal-50 border-teal-200 text-teal-700 font-medium'
-                        : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                    }`}
-                  >
+                        ? 'border-brand-400 bg-brand-50 text-brand-700 font-medium'
+                        : 'border-stone-200 text-stone-500 hover:border-stone-300'
+                    }`}>
                     {sc.label}
                   </button>
                 ))}
@@ -392,165 +395,248 @@ export default function NewOperation() {
           </div>
         )}
 
-        {/* Step 2: Details */}
+        {/* ── Étape 2 : Opération ── */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <FieldGroup label="Code operation *" hint="Ex : 26G307G, CAR-2026-042">
-                <input value={form.code_operation} onChange={e => set('code_operation', e.target.value.toUpperCase())}
+              <FieldGroup label="Code opération *" hint="Ex : 26G306G, CAR-2026-042">
+                <input value={form.code_operation}
+                  onChange={e => set('code_operation', e.target.value.toUpperCase())}
                   className={inputCls} placeholder="26G307G" />
               </FieldGroup>
-              <FieldGroup label="Nom de l'operation">
+              <FieldGroup label="Nom de l'opération">
                 <input value={form.nom_operation} onChange={e => set('nom_operation', e.target.value)}
-                  className={inputCls} placeholder="Evenement 7" />
+                  className={inputCls} placeholder="Événement 7" />
               </FieldGroup>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <FieldGroup label="Date de debut (validite)">
+              <FieldGroup label="Date de début (validité)">
                 <input type="date" value={form.date_debut} onChange={e => set('date_debut', e.target.value)} className={inputCls} />
               </FieldGroup>
-              <FieldGroup label="Date de fin (validite)">
+              <FieldGroup label="Date de fin (validité)">
                 <input type="date" value={form.date_fin} onChange={e => set('date_fin', e.target.value)} className={inputCls} />
               </FieldGroup>
             </div>
 
-            <FieldGroup label="Imprimeur" hint={linkedImprimeurs.length > 0 ? `${linkedImprimeurs.length} imprimeur(s) lie(s) a cette enseigne` : ''}>
-              <select value={form.imprimeur_id} onChange={e => set('imprimeur_id', e.target.value)} className={selectCls}>
-                <option value="">Aucun / a definir</option>
-                {imprimeurs
-                  .sort((a, b) => {
-                    const aLinked = linkedImprimeurs.includes(a.id) ? 0 : 1
-                    const bLinked = linkedImprimeurs.includes(b.id) ? 0 : 1
-                    return aLinked - bLinked
-                  })
-                  .map(imp => (
-                    <option key={imp.id} value={imp.id}>
-                      {imp.nom}
-                      {linkedImprimeurs.includes(imp.id) ? ' ★' : ''}
-                      {imp.type_machine ? ` — ${imp.type_machine}` : ''}
-                    </option>
-                  ))}
-              </select>
+            <FieldGroup label="Quantité estimative (exemplaires)">
+              <input type="number" value={form.qte_estimatives}
+                onChange={e => set('qte_estimatives', e.target.value)}
+                className={inputCls} placeholder="660 000" />
             </FieldGroup>
 
-            {selectedImprimeur && (
-              <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
-                <div className="font-medium mb-1">{selectedImprimeur.nom}</div>
-                <div className="flex gap-4">
-                  {selectedImprimeur.type_machine && <span>Machine : {selectedImprimeur.type_machine}</span>}
-                  {selectedImprimeur.sortie_native && <span>Sortie : {selectedImprimeur.sortie_native}</span>}
-                  {selectedImprimeur.multiple_impose && <span>Multiple : {selectedImprimeur.multiple_impose}</span>}
-                </div>
-                <div className="flex gap-4 mt-1 text-gray-400">
-                  {selectedImprimeur.bijointage && <span>Bijointage possible (≤ {selectedImprimeur.bijointage_seuil_pages} pages)</span>}
-                  <span>Ratio poids : {selectedImprimeur.ratio_poids_reel}</span>
-                </div>
-              </div>
-            )}
-
-            <FieldGroup label="Type de support">
-              <select value={form.support_type_id} onChange={e => set('support_type_id', e.target.value)} className={selectCls}>
-                <option value="">Aucun / a definir</option>
-                {supportTypes.map(st => (
-                  <option key={st.id} value={st.id}>{st.nom}</option>
-                ))}
-              </select>
+            <FieldGroup label="Particularités" hint="Ex: France en 3 => 2X 4/4 — Ouvert aux Espaces Culturels">
+              <textarea value={form.particularites} onChange={e => set('particularites', e.target.value)}
+                className={`${inputCls} h-16 resize-none`}
+                placeholder="Informations spécifiques à cette opération..." />
             </FieldGroup>
           </div>
         )}
 
-        {/* Step 3: Specs & Conditionnement */}
+        {/* ── Étape 3 : Document & impression ── */}
         {step === 3 && (
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Specifications du document</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <FieldGroup label="Pagination (pages)">
-                  <input type="number" value={form.pagination} onChange={e => set('pagination', e.target.value)}
-                    className={inputCls} placeholder="44" />
-                </FieldGroup>
-                <FieldGroup label="Format (cm)" hint="LxH : 20x25, 15x21..." source={defaultSources.format_document}>
-                  <input value={form.format_document} onChange={e => set('format_document', e.target.value)}
-                    className={inputCls} placeholder="20x25" />
-                </FieldGroup>
-                <FieldGroup label="Grammage (g/m2)" source={defaultSources.grammage}>
-                  <input type="number" value={form.grammage} onChange={e => set('grammage', e.target.value)}
-                    className={inputCls} placeholder="60" />
-                </FieldGroup>
-              </div>
+          <div className="space-y-4">
+
+            <SectionTitle>Format & pagination</SectionTitle>
+            <div className="grid grid-cols-3 gap-3">
+              <FieldGroup label="Format fini (cm)" hint="Sortie machine">
+                <input value={form.format_fini} onChange={e => set('format_fini', e.target.value)}
+                  className={inputCls} placeholder="20x26" />
+              </FieldGroup>
+              <FieldGroup label="Format devisé (cm)" hint="Après façonnage">
+                <input value={form.format_devise} onChange={e => set('format_devise', e.target.value)}
+                  className={inputCls} placeholder="20x25" />
+              </FieldGroup>
+              <FieldGroup label="Pagination globale">
+                <input type="number" value={form.pagination} onChange={e => set('pagination', e.target.value)}
+                  className={inputCls} placeholder="44" />
+              </FieldGroup>
+              <FieldGroup label="Pagination intérieure">
+                <input type="number" value={form.pagination_interieure}
+                  onChange={e => set('pagination_interieure', e.target.value)}
+                  className={inputCls} placeholder="44" />
+              </FieldGroup>
+              <FieldGroup label="Pagination couverture">
+                <input type="number" value={form.pagination_couverture}
+                  onChange={e => set('pagination_couverture', e.target.value)}
+                  className={inputCls} placeholder="0" />
+              </FieldGroup>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-700">Conditionnement</h3>
-                {selectedEnseigne?.conditionnement_defaut && (
-                  <span className="text-[10px] text-indigo-500 font-medium">Pre-rempli depuis {selectedEnseigne.nom}</span>
+            <SectionTitle>Finition</SectionTitle>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldGroup label="Façonnage">
+                <select value={form.faconnage} onChange={e => set('faconnage', e.target.value)} className={selectCls}>
+                  <option value="">— Sélectionner —</option>
+                  {['Brut de roto', 'Rogné', 'Autre'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </FieldGroup>
+              <FieldGroup label="Brochage">
+                <select value={form.brochage} onChange={e => set('brochage', e.target.value)} className={selectCls}>
+                  <option value="">— Sélectionner —</option>
+                  {['Piqué', 'Collé', 'Plié'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </FieldGroup>
+              {form.brochage === 'Collé' && (
+                <FieldGroup label="Type de colle">
+                  <input value={form.type_colle} onChange={e => set('type_colle', e.target.value)}
+                    className={inputCls} placeholder="Colle séparable ou dispersable" />
+                </FieldGroup>
+              )}
+            </div>
+
+            <SectionTitle>Papier & encre</SectionTitle>
+            <div className="grid grid-cols-3 gap-3">
+              <FieldGroup label="Grammage (g/m²)" source={defaultSources.grammage}>
+                <input type="number" value={form.grammage} onChange={e => set('grammage', e.target.value)}
+                  className={inputCls} placeholder="49" />
+              </FieldGroup>
+              <FieldGroup label="% fibre recyclée">
+                <input type="number" value={form.pct_fibre_recyclee}
+                  onChange={e => set('pct_fibre_recyclee', e.target.value)}
+                  className={inputCls} placeholder="50" />
+              </FieldGroup>
+              <FieldGroup label="Type d'encre">
+                <select value={form.type_encre} onChange={e => set('type_encre', e.target.value)} className={selectCls}>
+                  <option value="Sans huiles minérales">Sans huiles minérales</option>
+                  <option value="Standard">Standard</option>
+                </select>
+              </FieldGroup>
+              <FieldGroup label="Profil ICC">
+                <select value={form.profil_icc} onChange={e => set('profil_icc', e.target.value)} className={selectCls}>
+                  <option value="">— Sélectionner —</option>
+                  {['SC Paper', 'Iso Coated V2', 'Fogra 39', 'Autre'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </FieldGroup>
+            </div>
+
+            <SectionTitle>Repiquages</SectionTitle>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldGroup label="Nb repiquages au noir">
+                <input type="number" value={form.nb_repiquages_noir}
+                  onChange={e => set('nb_repiquages_noir', e.target.value)}
+                  className={inputCls} placeholder="15" />
+              </FieldGroup>
+              <FieldGroup label="Nb repiquages quadri">
+                <input type="number" value={form.nb_repiquages_quadri}
+                  onChange={e => set('nb_repiquages_quadri', e.target.value)}
+                  className={inputCls} placeholder="0" />
+              </FieldGroup>
+            </div>
+
+            <SectionTitle>Impression</SectionTitle>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldGroup label="Imprimeur" hint={linkedImprimeurs.length > 0 ? `${linkedImprimeurs.length} lié(s) à cette enseigne` : ''}>
+                <select value={form.imprimeur_id} onChange={e => set('imprimeur_id', e.target.value)} className={selectCls}>
+                  <option value="">Aucun / à définir</option>
+                  {imprimeurs
+                    .sort((a, b) => (linkedImprimeurs.includes(a.id) ? 0 : 1) - (linkedImprimeurs.includes(b.id) ? 0 : 1))
+                    .map(imp => (
+                      <option key={imp.id} value={imp.id}>
+                        {imp.nom}{linkedImprimeurs.includes(imp.id) ? ' ★' : ''}{imp.type_machine ? ` — ${imp.type_machine}` : ''}
+                      </option>
+                    ))}
+                </select>
+              </FieldGroup>
+              <FieldGroup label="Procédé">
+                <select value={form.procede_impression} onChange={e => set('procede_impression', e.target.value)} className={selectCls}>
+                  {['Offset', 'Héliogravure', 'Numérique', 'Flexographie'].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </FieldGroup>
+              <FieldGroup label="Pays d'impression">
+                <input value={form.pays_impression} onChange={e => set('pays_impression', e.target.value)}
+                  className={inputCls} placeholder="France" />
+              </FieldGroup>
+              <FieldGroup label="Type de support">
+                <select value={form.support_type_id} onChange={e => set('support_type_id', e.target.value)} className={selectCls}>
+                  <option value="">Aucun / à définir</option>
+                  {supportTypes.map(st => <option key={st.id} value={st.id}>{st.nom}</option>)}
+                </select>
+              </FieldGroup>
+            </div>
+
+            {selectedImprimeur && (
+              <div className="bg-stone-50 rounded-lg p-3 text-xs text-stone-500 grid grid-cols-3 gap-2">
+                <span>Machine : {selectedImprimeur.type_machine ?? '—'}</span>
+                <span>Sortie : {selectedImprimeur.sortie_native ?? '—'}</span>
+                <span>Multiple : {selectedImprimeur.multiple_impose ?? '—'} ex/paquet</span>
+                {selectedImprimeur.bijointage && (
+                  <span className="col-span-3">Bijointage possible ≤ {selectedImprimeur.bijointage_seuil_pages} pages</span>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FieldGroup label="Exemplaires / paquet" hint="Sortie machine imprimeur" source={defaultSources.ex_par_paquet}>
-                  <input type="number" value={form.ex_par_paquet} onChange={e => set('ex_par_paquet', e.target.value)}
-                    className={inputCls} placeholder="100" />
-                </FieldGroup>
-                <FieldGroup label="Exemplaires / carton" hint="Mise sous carton Fretin" source={defaultSources.ex_par_carton}>
-                  <input type="number" value={form.ex_par_carton} onChange={e => set('ex_par_carton', e.target.value)}
-                    className={inputCls} placeholder="200" />
-                </FieldGroup>
-                <FieldGroup label="Cartons / palette (max)" source={defaultSources.cartons_par_palette}>
-                  <input type="number" value={form.cartons_par_palette} onChange={e => set('cartons_par_palette', e.target.value)}
-                    className={inputCls} placeholder="48" />
-                </FieldGroup>
-                <FieldGroup label="Seuil PDV (exemplaires)" hint="Au-dela → palette individuelle" source={defaultSources.seuil_pdv}>
-                  <input type="number" value={form.seuil_pdv} onChange={e => set('seuil_pdv', e.target.value)}
-                    className={inputCls} placeholder="2800" />
-                </FieldGroup>
-                <FieldGroup label="Poids unitaire (kg/ex)" hint="Calcule depuis grammage/pagination si vide" source={defaultSources.poids_unitaire_kg}>
-                  <input type="number" step="0.001" value={form.poids_unitaire_kg} onChange={e => set('poids_unitaire_kg', e.target.value)}
-                    className={inputCls} placeholder="0.054" />
-                </FieldGroup>
-              </div>
+            )}
+
+            <SectionTitle>Dates de production</SectionTitle>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldGroup label="Date dépôt fichiers (BAT)">
+                <input type="date" value={form.date_depot_fichier}
+                  onChange={e => set('date_depot_fichier', e.target.value)} className={inputCls} />
+              </FieldGroup>
+              <FieldGroup label="Date livraison maxi prospectus">
+                <input type="date" value={form.date_livraison_maxi}
+                  onChange={e => set('date_livraison_maxi', e.target.value)} className={inputCls} />
+              </FieldGroup>
+            </div>
+          </div>
+        )}
+
+        {/* ── Étape 4 : Logistique ── */}
+        {step === 4 && (
+          <div className="space-y-4">
+            <SectionTitle>Conditionnement</SectionTitle>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldGroup label="Ex / paquet" hint="Sortie machine imprimeur" source={defaultSources.ex_par_paquet}>
+                <input type="number" value={form.ex_par_paquet}
+                  onChange={e => set('ex_par_paquet', e.target.value)} className={inputCls} placeholder="100" />
+              </FieldGroup>
+              <FieldGroup label="Ex / carton" hint="Mise sous carton Frétin" source={defaultSources.ex_par_carton}>
+                <input type="number" value={form.ex_par_carton}
+                  onChange={e => set('ex_par_carton', e.target.value)} className={inputCls} placeholder="200" />
+              </FieldGroup>
+              <FieldGroup label="Cartons / palette (max)" source={defaultSources.cartons_par_palette}>
+                <input type="number" value={form.cartons_par_palette}
+                  onChange={e => set('cartons_par_palette', e.target.value)} className={inputCls} placeholder="48" />
+              </FieldGroup>
+              <FieldGroup label="Seuil PDV (ex)" hint="Au-delà → palette individuelle" source={defaultSources.seuil_pdv}>
+                <input type="number" value={form.seuil_pdv}
+                  onChange={e => set('seuil_pdv', e.target.value)} className={inputCls} placeholder="2800" />
+              </FieldGroup>
+              <FieldGroup label="Poids unitaire (kg/ex)" hint="Calculé depuis grammage/pagination si vide" source={defaultSources.poids_unitaire_kg}>
+                <input type="number" step="0.001" value={form.poids_unitaire_kg}
+                  onChange={e => set('poids_unitaire_kg', e.target.value)} className={inputCls} placeholder="0.054" />
+              </FieldGroup>
             </div>
 
-            {/* Type de palette */}
-            <div>
-              <label className="text-xs text-stone-500 mb-1 block">Type de palette</label>
+            <SectionTitle>Palette</SectionTitle>
+            <FieldGroup label="Type de palette" hint="Standard = défini par le transporteur de la centrale">
               <select value={form.type_palette_id} onChange={e => set('type_palette_id', e.target.value)} className={selectCls}>
-                <option value="">Standard (défini par le transporteur)</option>
+                <option value="">Standard (défini par transporteur)</option>
                 {typesPalette.map(tp => (
                   <option key={tp.id} value={tp.id}>
                     {tp.nom}{tp.code ? ` (${tp.code})` : ''} — {tp.cartons_max} crt, {tp.poids_max_kg} kg, {tp.hauteur_max_cm} cm{tp.gerbable ? ' · gerbable' : ''}
                   </option>
                 ))}
               </select>
-              {form.type_palette_id && (() => {
-                const tp = typesPalette.find(t => t.id === form.type_palette_id)
-                return tp ? (
-                  <div className="mt-1 text-[10px] text-indigo-600 bg-indigo-50 rounded px-2 py-1">
-                    Max {tp.cartons_max} cartons · {tp.poids_max_kg} kg · {tp.hauteur_max_cm} cm{tp.gerbable ? ' · gerbable' : ''}
-                  </div>
-                ) : null
-              })()}
-            </div>
-
-            <FieldGroup label="Notes / remarques">
-              <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-                className={`${inputCls} h-20 resize-none`} placeholder="Informations complementaires..." />
             </FieldGroup>
 
-            {/* Recap before creation */}
-            <div className="bg-gray-50 rounded-xl p-4 text-xs">
-              <div className="font-medium text-sm text-gray-900 mb-2">Recapitulatif</div>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-gray-600">
-                <div>Enseigne : <span className="font-medium text-gray-900">{selectedEnseigne?.nom}</span></div>
-                <div>Code : <span className="font-medium text-gray-900">{form.code_operation || '—'}</span></div>
-                <div>Categorie : <span className="font-medium text-gray-900 capitalize">{form.categorie}</span> / {SOUS_CAT_OPTIONS[form.categorie].find(s => s.value === form.sous_categorie)?.label ?? '—'}</div>
-                <div>Nom : <span className="font-medium text-gray-900">{form.nom_operation || '—'}</span></div>
-                <div>Imprimeur : <span className="font-medium text-gray-900">{selectedImprimeur?.nom ?? 'A definir'}</span></div>
-                <div>Validite : <span className="font-medium text-gray-900">{form.date_debut && form.date_fin ? `${form.date_debut} → ${form.date_fin}` : 'A definir'}</span></div>
-                {form.pagination && <div>Document : <span className="font-medium text-gray-900">{form.pagination}p, {form.format_document}, {form.grammage} g/m2</span></div>}
-                <div>Conditionnement : <span className="font-medium text-gray-900">{form.ex_par_paquet}/{form.ex_par_carton}/{form.cartons_par_palette}, seuil {form.seuil_pdv}</span></div>
-                {form.poids_unitaire_kg && <div>Poids/ex : <span className="font-medium text-gray-900">{form.poids_unitaire_kg} kg</span></div>}
+            <SectionTitle>Notes</SectionTitle>
+            <FieldGroup label="Notes / remarques">
+              <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                className={`${inputCls} h-16 resize-none`} placeholder="Informations complémentaires..." />
+            </FieldGroup>
+
+            {/* Récapitulatif */}
+            <div className="bg-stone-50 rounded-xl p-4 text-xs space-y-1.5 text-stone-600">
+              <div className="font-medium text-sm text-stone-900 mb-2">Récapitulatif</div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                <div>Enseigne : <span className="font-medium text-stone-900">{selectedEnseigne?.nom}</span></div>
+                <div>Code : <span className="font-medium text-stone-900">{form.code_operation || '—'}</span></div>
+                <div>Nom : <span className="font-medium text-stone-900">{form.nom_operation || '—'}</span></div>
+                <div>Validité : <span className="font-medium text-stone-900">{form.date_debut && form.date_fin ? `${form.date_debut} → ${form.date_fin}` : '—'}</span></div>
+                {form.pagination && <div>Document : <span className="font-medium text-stone-900">{form.pagination}p · {form.format_devise || form.format_fini} · {form.grammage} g/m²</span></div>}
+                {form.brochage && <div>Finition : <span className="font-medium text-stone-900">{form.faconnage} · {form.brochage}</span></div>}
+                {form.imprimeur_id && <div>Imprimeur : <span className="font-medium text-stone-900">{selectedImprimeur?.nom}</span></div>}
+                <div>Conditionnement : <span className="font-medium text-stone-900">{form.ex_par_paquet}/{form.ex_par_carton}/{form.cartons_par_palette} · seuil {form.seuil_pdv}</span></div>
               </div>
             </div>
           </div>
@@ -561,32 +647,25 @@ export default function NewOperation() {
         )}
 
         {/* Navigation */}
-        <div className="flex items-center justify-between mt-8 pt-4 border-t border-gray-200">
+        <div className="flex items-center justify-between mt-8 pt-4 border-t border-stone-200">
           <button
             onClick={() => step > 1 ? setStep((step - 1) as Step) : navigate('/operations')}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm text-stone-500 hover:text-stone-700 transition-colors"
           >
             <ArrowLeft size={14} />
-            {step === 1 ? 'Annuler' : 'Precedent'}
+            {step === 1 ? 'Annuler' : 'Précédent'}
           </button>
 
-          {step < 3 ? (
-            <button
-              onClick={() => setStep((step + 1) as Step)}
-              disabled={!canNext(step)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors"
-            >
-              Suivant
-              <ArrowRight size={14} />
+          {step < 4 ? (
+            <button onClick={() => setStep((step + 1) as Step)} disabled={!canNext(step)}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-stone-900 text-white rounded-lg hover:opacity-85 disabled:opacity-40 transition-all">
+              Suivant <ArrowRight size={14} />
             </button>
           ) : (
-            <button
-              onClick={handleCreate}
-              disabled={saving || !form.code_operation.trim()}
-              className="flex items-center gap-1.5 px-5 py-2 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors"
-            >
+            <button onClick={handleCreate} disabled={saving || !form.code_operation.trim()}
+              className="flex items-center gap-1.5 px-5 py-2 text-sm bg-brand-500 text-white rounded-lg hover:opacity-85 disabled:opacity-40 transition-all">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              {saving ? 'Creation...' : 'Creer l\'operation'}
+              {saving ? 'Création...' : 'Créer l\'opération'}
             </button>
           )}
         </div>
