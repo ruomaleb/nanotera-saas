@@ -255,12 +255,11 @@ export default function AiChat({ operationId, operationLabel }: AiChatProps) {
             </div>
             <div className="flex items-center gap-1">
               {messages.length > 0 && (
-                <button onClick={clearChat} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Effacer la conversation">
+                <><button onClick={clearChat} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Effacer la conversation">
                   <RotateCcw size={12} />
-                </button>
-                <button onClick={closeSession} className="p-1 text-gray-400 hover:text-green-600 transition-colors text-[11px] font-medium leading-none px-1.5" title="Clore et résumer la session">
-                  ✓ Clore
-                </button>
+                </button><button onClick={closeSession} className="p-1 text-gray-400 hover:text-green-600 transition-colors text-[11px] font-medium leading-none px-1.5" title="Clore et résumer la session">
+                    Clore
+                  </button></>
               )}
               <button onClick={() => setOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
                 <ChevronDown size={14} />
