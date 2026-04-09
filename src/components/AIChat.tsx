@@ -40,6 +40,8 @@ export default function AiChat({ operationId, operationLabel }: AiChatProps) {
   const [streaming, setStreaming] = useState(false)
   const { active: selectionActive, activate: activateSelection, consume: consumeSelected } = useSelection()
   const inputRef                  = useRef<HTMLInputElement>(null)
+  const sessionIdRef              = useRef<string | null>(null)
+  const closeTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bottomRef                 = useRef<HTMLDivElement>(null)
   const abortRef                  = useRef<AbortController | null>(null)
 
@@ -48,9 +50,28 @@ export default function AiChat({ operationId, operationLabel }: AiChatProps) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Focus input on open
+  // Focus input on open + créer/réouvrir session
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 100)
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 100)
+      // Créer une nouvelle session si pas de session active
+      if (!sessionIdRef.current) {
+        fetch(`${API_BASE}/api/chat/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            operation_id: operationId ?? null,
+            page_url: window.location.pathname,
+            model: getStoredModel(),
+          }),
+        })
+          .then(r => r.json())
+          .then(d => { if (d.id) sessionIdRef.current = d.id })
+          .catch(() => {})
+      }
+      // Annuler le timer de fermeture si le chat est rouvert
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    }
   }, [open])
 
 
@@ -129,6 +150,17 @@ export default function AiChat({ operationId, operationLabel }: AiChatProps) {
         next[next.length - 1] = { role: 'assistant', content: accumulated, streaming: false }
         return next
       })
+      // Sauvegarder les deux messages
+      if (sessionIdRef.current) {
+        const saveMsg = (role: string, content: string) =>
+          fetch(`${API_BASE}/api/chat/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionIdRef.current, role, content }),
+          }).catch(() => {})
+        saveMsg('user', text)
+        saveMsg('assistant', accumulated)
+      }
 
     } catch (e: any) {
       if (e.name === 'AbortError') {
@@ -169,6 +201,20 @@ export default function AiChat({ operationId, operationLabel }: AiChatProps) {
   const clearChat = () => {
     setMessages([])
     setInput('')
+    sessionIdRef.current = null
+  }
+
+  const closeSession = () => {
+    if (!sessionIdRef.current) return
+    fetch(`${API_BASE}/api/chat/sessions/close`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionIdRef.current, model: getStoredModel() }),
+    }).catch(() => {})
+    sessionIdRef.current = null
+    setMessages([])
+    setInput('')
+    setOpen(false)
   }
 
   return (
@@ -211,6 +257,9 @@ export default function AiChat({ operationId, operationLabel }: AiChatProps) {
               {messages.length > 0 && (
                 <button onClick={clearChat} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Effacer la conversation">
                   <RotateCcw size={12} />
+                </button>
+                <button onClick={closeSession} className="p-1 text-gray-400 hover:text-green-600 transition-colors text-[11px] font-medium leading-none px-1.5" title="Clore et résumer la session">
+                  ✓ Clore
                 </button>
               )}
               <button onClick={() => setOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 transition-colors">

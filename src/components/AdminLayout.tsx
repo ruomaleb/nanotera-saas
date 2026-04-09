@@ -5,7 +5,7 @@
 
 import { ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Shield, Globe, Building2, Printer, FileText } from 'lucide-react'
+import { ArrowLeft, Shield, Globe, Building2, Printer, FileText, MessageSquare } from 'lucide-react'
 
 interface AdminLayoutProps {
   children: ReactNode
@@ -19,6 +19,7 @@ const ADMIN_NAV = [
   { to: '/admin/enseignes',  label: 'Par enseigne',    icon: Building2 },
   { to: '/admin/imprimeurs', label: 'Par imprimeur',   icon: Printer },
   { to: '/admin/prompts',    label: 'Prompts IA',      icon: FileText },
+  { to: '/admin/conversations', label: 'Conversations IA', icon: MessageSquare },
 ]
 
 export default function AdminLayout({ children, title, subtitle }: AdminLayoutProps) {
