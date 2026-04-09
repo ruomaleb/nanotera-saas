@@ -248,13 +248,10 @@ export default function Palettisation() {
               </div>
             </div>
           </div>
-<PaletteAlerts
+          <PaletteAlerts
             operationId={op.id}
             onRelancer={handleRunBinpacking}
           />
-
-          {/* Relancer */}
-          <div className="flex justify-end gap-2">
 
           {/* Relancer */}
           <div className="flex justify-end gap-2">
