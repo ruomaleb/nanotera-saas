@@ -14,9 +14,10 @@ import Import from './pages/Import'
 import Analyse from './pages/Analyse'
 import Livrables from './pages/Livrables'
 import Palettisation from './pages/Palettisation'
+import Dashboard from './pages/Dashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import { AdminGlobal, AdminEnseignes, AdminImprimeurs, AdminPrompts } from './pages/AdminPages'
-import AiChat from './components/AIChat'
+import AiChat from './components/AiChat'
 
 function AiChatWrapper() {
   const location = useLocation()
@@ -74,7 +75,7 @@ export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to="/enseignes" replace />} />
+        <Route path="/" element={<Dashboard />} />
         <Route path="/enseignes" element={<Enseignes />} />
         <Route path="/supports" element={<Supports />} />
         <Route path="/modeles" element={<Modeles />} />
@@ -91,7 +92,7 @@ export default function App() {
         <Route path="/admin/enseignes" element={<AdminEnseignes />} />
         <Route path="/admin/imprimeurs" element={<AdminImprimeurs />} />
         <Route path="/admin/prompts" element={<AdminPrompts />} />
-        <Route path="*" element={<Navigate to="/enseignes" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <AiChatWrapper />
     </Layout>

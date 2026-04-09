@@ -1,165 +1,226 @@
 import { useState, createContext, useContext, ReactNode } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../hooks/useOrg'
 import AIChat from './AIChat'
 import ModelSelector from './ModelSelector'
 import {
-  Building2, Package, CalendarRange, FileText,
-  Upload, Search, BoxesIcon, FileOutput,
-  Settings, BotMessageSquare, LogOut, Shield
+  Home, List, Upload, ScanLine, Layers, Download,
+  BotMessageSquare, LogOut, Shield, ChevronRight, Check, ArrowRight, X,
 } from 'lucide-react'
-
-interface EditorState {
-  open: boolean
-  title: string
-  content: ReactNode | null
-}
+import { useCurrentOperation, statutIndex, CurrentOp } from '../hooks/useCurrentOperation'
 
 interface LayoutContextType {
+  currentOp: CurrentOp | null
+  setCurrentOp: (op: CurrentOp | null) => void
   openEditor: (title: string, content: ReactNode) => void
   closeEditor: () => void
 }
 
 export const LayoutContext = createContext<LayoutContextType>({
-  openEditor: () => {},
-  closeEditor: () => {},
+  currentOp: null, setCurrentOp: () => {},
+  openEditor: () => {}, closeEditor: () => {},
 })
 
-export function useEditor() {
-  return useContext(LayoutContext)
-}
+export function useEditor()    { return useContext(LayoutContext) }
+export function useOpContext() { return useContext(LayoutContext) }
 
-const NAV_ITEMS = [
-  { group: 'Referentiel', items: [
-    { path: '/enseignes', label: 'Enseignes', icon: Building2 },
-    { path: '/supports', label: 'Supports & condit.', icon: Package },
-    { path: '/operations', label: 'Operations', icon: CalendarRange },
-    { path: '/modeles', label: 'Modeles documents', icon: FileText },
-  ]},
-  { group: 'Operation en cours', items: [
-    { path: '/import', label: 'Import repartition', icon: Upload },
-    { path: '/analyse', label: 'Analyse donnees', icon: Search },
-    { path: '/palettisation', label: 'Palettisation', icon: BoxesIcon },
-    { path: '/livrables', label: 'Livrables', icon: FileOutput },
-  ]},
+const WORKFLOW = [
+  { statut: 'import',        label: 'Import',       icon: Upload,   to: (id: string) => '/import' },
+  { statut: 'analyse',       label: 'Analyse',      icon: ScanLine, to: (id: string) => '/analyse' },
+  { statut: 'palettisation', label: 'Palettisation', icon: Layers,   to: (id: string) => `/palettisation/${id}` },
+  { statut: 'livrables',     label: 'Livrables',    icon: Download, to: (id: string) => '/livrables' },
 ]
+
+function WorkflowStepper({ op }: { op: CurrentOp }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const doneIdx  = statutIndex(op.statut)
+
+  return (
+    <div style={{ paddingBottom: 4 }}>
+      {WORKFLOW.map((step, i) => {
+        const isDone   = i < doneIdx
+        const isActive = location.pathname.startsWith(i === 2 ? '/palettisation' : step.to(op.id))
+        const isLocked = i > doneIdx + 1
+
+        return (
+          <button key={step.statut}
+            onClick={() => !isLocked && navigate(step.to(op.id))}
+            disabled={isLocked}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              padding: '7px 16px 7px 14px', border: 'none', fontFamily: 'inherit',
+              cursor: isLocked ? 'default' : 'pointer',
+              background: isActive ? '#EEECFC' : 'transparent',
+              borderLeft: `2px solid ${isActive ? '#6B52C8' : 'transparent'}`,
+              transition: 'all .1s', opacity: isLocked ? 0.3 : 1,
+            }}
+          >
+            <div style={{
+              width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: isDone || isActive ? '#6B52C8' : '#F0EDE8',
+              border: isDone || isActive ? 'none' : '1.5px solid #D5D2CA',
+            }}>
+              {isDone
+                ? <Check size={10} style={{ color: '#fff' }} />
+                : <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? '#fff' : '#B4B2A9' }}>{i + 1}</span>
+              }
+            </div>
+            <span style={{ fontSize: 13, fontWeight: isActive ? 500 : 400, color: isActive ? '#6B52C8' : isDone ? '#3D3C3A' : '#888', flex: 1, textAlign: 'left' }}>
+              {step.label}
+            </span>
+            {isDone && !isActive && <span style={{ fontSize: 11, color: '#0F6E56' }}>✓</span>}
+            {!isDone && !isActive && !isLocked && <ChevronRight size={12} style={{ color: '#D5D2CA' }} />}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { org }  = useOrg()
   const [aiOpen, setAiOpen] = useState(false)
-  const [editor, setEditor] = useState<EditorState>({ open: false, title: '', content: null })
-  const { org } = useOrg()
+  const [editor, setEditor] = useState<{ open: boolean; title: string; content: ReactNode | null }>({ open: false, title: '', content: null })
+  const { op: currentOp, setOp: setCurrentOp } = useCurrentOperation()
 
-  const openEditor = (title: string, content: ReactNode) => {
-    setEditor({ open: true, title, content })
-  }
-  const closeEditor = () => {
-    setEditor({ open: false, title: '', content: null })
-  }
+  const openEditor  = (title: string, content: ReactNode) => setEditor({ open: true, title, content })
+  const closeEditor = () => setEditor({ open: false, title: '', content: null })
+  const handleLogout = async () => { await supabase.auth.signOut() }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-  }
+  const isWorkflowPage = ['/import', '/analyse', '/palettisation', '/livrables'].some(p => location.pathname.startsWith(p))
+
+  const navItemStyle = (isActive: boolean) => ({
+    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+    padding: '7px 16px', fontSize: 13,
+    fontWeight: isActive ? 500 : 400,
+    color: isActive ? '#6B52C8' : '#555',
+    background: isActive ? '#EEECFC' : 'transparent',
+    borderLeft: `2px solid ${isActive ? '#6B52C8' : 'transparent'}`,
+    border: 'none', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none',
+    transition: 'all .1s', display: 'flex',
+  } as React.CSSProperties)
 
   return (
-    <LayoutContext.Provider value={{ openEditor, closeEditor }}>
-      <div className="h-screen flex overflow-hidden bg-white">
-        {/* Colonne 1 — Sidebar */}
-        <aside className="w-56 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col">
-          <div className="px-4 pt-4 pb-3 border-b border-gray-200">
-            <div className="font-semibold text-base text-gray-900 tracking-tight">{org?.org_nom ?? 'Nanotera'}</div>
-            <div className="text-xs text-gray-400">{org?.user_nom ?? 'Optimisation logistique'}</div>
+    <LayoutContext.Provider value={{ currentOp, setCurrentOp, openEditor, closeEditor }}>
+      <div className="h-screen flex overflow-hidden" style={{ background: '#F5F4F1' }}>
+
+        {/* ── Sidebar ── */}
+        <aside className="flex-shrink-0 flex flex-col bg-white border-r overflow-y-auto"
+          style={{ width: 224, borderColor: '#E8E6E0' }}>
+
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #F0EDE8' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#6B52C8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ color: '#fff', fontSize: 11, fontWeight: 600 }}>N</span>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A', lineHeight: 1.2 }}>{org?.org_nom ?? 'Nanotera'}</div>
+              <div style={{ fontSize: 11, color: '#aaa' }}>Logistique prospectus</div>
+            </div>
           </div>
 
-          <nav className="flex-1 overflow-y-auto p-2">
-            {NAV_ITEMS.map(group => (
-              <div key={group.group}>
-                <div className="text-[10px] uppercase tracking-wider text-gray-400 px-3 pt-3 pb-1">
-                  {group.group}
-                </div>
-                {group.items.map(item => {
-                  const Icon = item.icon
-                  const active = location.pathname.startsWith(item.path)
-                  return (
-                    <button
-                      key={item.path}
-                      onClick={() => navigate(item.path)}
-                      className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] transition-colors ${
-                        active
-                          ? 'bg-white text-gray-900 font-medium shadow-sm'
-                          : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-                      }`}
-                    >
-                      <Icon size={15} />
-                      {item.label}
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+          {/* Nav principale */}
+          <nav style={{ padding: '8px 0' }}>
+            <NavLink to="/" end style={({ isActive }) => navItemStyle(isActive)}>
+              <Home size={15} style={{ flexShrink: 0 }} /> Accueil
+            </NavLink>
+            <NavLink to="/operations" style={({ isActive }) => navItemStyle(isActive || location.pathname.startsWith('/operations/new'))}>
+              <List size={15} style={{ flexShrink: 0 }} /> Opérations
+            </NavLink>
           </nav>
 
-          <div className="p-2 border-t border-gray-200">
-            {/* Sélecteur de modèle */}
-            <div style={{ padding: '6px 4px 8px', borderBottom: '1px solid #F0EDE8', marginBottom: 4 }}>
-              <div style={{ fontSize: 10, color: '#aaa', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 500, paddingLeft: 4 }}>
-                Modèle IA
+          {/* Separator */}
+          <div style={{ borderTop: '1px solid #F0EDE8', margin: '0' }} />
+
+          {/* Workflow contextuel */}
+          {currentOp ? (
+            <div>
+              {/* Chip opération */}
+              <div style={{ padding: '10px 12px 6px' }}>
+                <div style={{ fontSize: 11, color: '#aaa', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>
+                  Opération active
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#F5F4F1', borderRadius: 8, padding: '7px 10px', border: '1px solid #E8E6E0' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentOp.code}</div>
+                    {currentOp.nom && (
+                      <div style={{ fontSize: 11, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentOp.nom}</div>
+                    )}
+                  </div>
+                  <button onClick={() => setCurrentOp(null)}
+                    style={{ color: '#D5D2CA', background: 'none', border: 'none', cursor: 'pointer', padding: 2, flexShrink: 0, lineHeight: 1 }}>
+                    <X size={13} />
+                  </button>
+                </div>
               </div>
+              <WorkflowStepper op={currentOp} />
+            </div>
+          ) : isWorkflowPage ? (
+            <button onClick={() => navigate('/operations')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, margin: '10px 12px',
+                padding: '9px 12px', border: '1.5px dashed #D5D2CA', borderRadius: 8,
+                background: 'none', cursor: 'pointer', color: '#888', fontSize: 12,
+                fontFamily: 'inherit', width: 'calc(100% - 24px)',
+              }}>
+              <ArrowRight size={13} style={{ flexShrink: 0 }} />
+              <span>Sélectionner une opération</span>
+            </button>
+          ) : null}
+
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+
+          {/* Bas sidebar */}
+          <div style={{ borderTop: '1px solid #F0EDE8' }}>
+            <div style={{ padding: '8px 12px 6px' }}>
+              <div style={{ fontSize: 11, color: '#aaa', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 500 }}>Modèle IA</div>
               <ModelSelector />
             </div>
-            <button
-              onClick={() => setAiOpen(!aiOpen)}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] transition-colors ${
-                aiOpen ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-indigo-500 hover:bg-indigo-50'
-              }`}
-            >
-              <BotMessageSquare size={15} />
-              Assistant IA
-              {aiOpen && <span className="text-[10px] opacity-60 ml-auto">actif</span>}
-            </button>
-            <button
-              onClick={() => navigate('/admin')}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-            >
-              <Shield size={15} />
-              Administration
-            </button>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-            >
-              <LogOut size={15} />
-              Deconnexion
-            </button>
+            {[
+              { label: 'Assistant IA', icon: BotMessageSquare, onClick: () => setAiOpen(!aiOpen), active: aiOpen, color: aiOpen ? '#6B52C8' : '#7C68D4' },
+              { label: 'Administration', icon: Shield, onClick: () => navigate('/admin'), active: false, color: '#aaa' },
+              { label: 'Déconnexion', icon: LogOut, onClick: handleLogout, active: false, color: '#aaa' },
+            ].map(item => (
+              <button key={item.label} onClick={item.onClick}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '7px 16px', fontSize: 13, color: item.color,
+                  background: item.active ? '#EEECFC' : 'transparent',
+                  border: 'none', cursor: 'pointer', fontFamily: 'inherit', transition: 'all .1s',
+                }}>
+                <item.icon size={15} style={{ flexShrink: 0 }} />
+                {item.label}
+                {item.label === 'Assistant IA' && aiOpen && (
+                  <span style={{ fontSize: 11, opacity: .6, marginLeft: 'auto' }}>actif</span>
+                )}
+              </button>
+            ))}
           </div>
         </aside>
 
-        {/* Colonne 2 — Contenu principal */}
-        <main className="flex-1 min-w-0 overflow-y-auto">
-          {children}
-        </main>
+        {/* Main */}
+        <main className="flex-1 min-w-0 overflow-y-auto">{children}</main>
 
-        {/* Colonne 3 — Panneau editeur (conditionnel) */}
+        {/* Editor panel */}
         {editor.open && (
-          <aside className="w-80 flex-shrink-0 border-l border-gray-200 flex flex-col overflow-y-auto">
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-              <span className="font-medium text-sm">{editor.title}</span>
-              <button
-                onClick={closeEditor}
-                className="text-xs text-gray-400 hover:text-gray-600 px-2 py-0.5 rounded border border-gray-200"
-              >
+          <aside className="flex-shrink-0 flex flex-col overflow-y-auto border-l"
+            style={{ width: 320, borderColor: '#E8E6E0', background: '#fff' }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: '#F0EDE8' }}>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{editor.title}</span>
+              <button onClick={closeEditor} style={{ fontSize: 12, color: '#888', padding: '2px 8px', border: '1px solid #E8E6E0', borderRadius: 6, background: 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
                 Fermer
               </button>
             </div>
-            <div className="flex-1 p-4">
-              {editor.content}
-            </div>
+            <div className="flex-1 p-4">{editor.content}</div>
           </aside>
         )}
 
-        {/* Panneau IA flottant */}
         {aiOpen && <AIChat onClose={() => setAiOpen(false)} />}
       </div>
     </LayoutContext.Provider>
