@@ -1,9 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply text-sm;
+  :root {
+    --color-brand: #6B52C8;
+    --color-brand-light: #EEECFC;
+    --color-page-bg: #F5F4F1;
+    --color-border: #E8E6E0;
+    --color-border-soft: #F0EDE8;
   }
+  html, body, #root { height: 100%; }
+  body {
+    font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #1A1A1A;
+    background-color: var(--color-page-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D5D2CA; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #B4B2A9; }
+}
+
+@layer components {
+  .badge { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium border leading-4; font-size: 10px; }
+  .badge-scheduled { @apply bg-brand-50 text-brand-700 border-brand-200; }
+  .badge-live      { @apply bg-green-50 text-green-700 border-green-200; }
+  .badge-pending   { @apply bg-amber-50 text-amber-700 border-amber-200; }
+  .badge-error     { @apply bg-red-50 text-red-700 border-red-200; }
+  .badge-neutral   { @apply bg-stone-200 text-stone-600 border-stone-300; }
+
+  .card { @apply bg-white border border-stone-300 rounded-xl overflow-hidden; }
+  .card-header { @apply flex items-center gap-2.5 px-3.5 py-2.5 border-b border-stone-100; }
+  .card-body   { @apply px-3.5 py-3; }
+
+  .stat-card         { @apply bg-stone-100 rounded-lg px-3 py-2.5; }
+  .stat-card__label  { font-size: 10px; @apply text-stone-400 uppercase tracking-wide font-medium; }
+  .stat-card__value  { @apply text-xl font-medium text-stone-900 mt-0.5 leading-tight; }
+  .stat-card__sub    { font-size: 10px; @apply text-stone-400 mt-0.5; }
+
+  .icon-badge        { @apply w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0; }
+  .icon-badge--brand { @apply bg-brand-50 text-brand-500; }
+  .icon-badge--amber { @apply bg-amber-50 text-amber-700; }
+  .icon-badge--gray  { @apply bg-stone-100 text-stone-500; }
+  .icon-badge--green { @apply bg-green-50 text-green-700; }
+
+  .btn-primary   { @apply inline-flex items-center justify-center gap-1.5 h-8 px-3 text-sm font-medium rounded-lg bg-stone-900 text-white border border-transparent transition-all hover:opacity-85 disabled:opacity-40 disabled:cursor-default; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-1.5 h-8 px-3 text-sm font-medium rounded-lg bg-white text-stone-600 border border-stone-300 transition-all hover:bg-stone-100 disabled:opacity-40 disabled:cursor-default; }
+  .btn-brand     { @apply inline-flex items-center justify-center gap-1.5 h-8 px-3 text-sm font-medium rounded-lg bg-brand-500 text-white border border-transparent transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-default; }
+
+  .nnt-input  { @apply h-[34px] border border-stone-300 rounded-lg bg-white px-2.5 text-sm text-stone-900 transition-colors outline-none w-full placeholder:text-stone-400 focus:border-brand-500; font-family: inherit; }
+  .nnt-select { @apply h-[34px] border border-stone-300 rounded-lg bg-white pl-2.5 text-sm text-stone-900 cursor-pointer outline-none appearance-none focus:border-brand-500; font-family: inherit; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
 }
