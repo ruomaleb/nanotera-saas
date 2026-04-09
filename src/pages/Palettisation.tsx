@@ -229,20 +229,20 @@ export default function Palettisation() {
           {/* Stats */}
           <div className="grid grid-cols-4 gap-3">
             <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">Total palettes</div>
+              <div className="text-xs text-gray-500">Total palettes</div>
               <div className="text-xl font-semibold">{palettes.length}</div>
-              <div className="text-[10px] text-gray-400">{op.nb_palettes_grp ?? 0}G + {op.nb_palettes_pdv ?? 0}P</div>
+              <div className="text-xs text-gray-400">{op.nb_palettes_grp ?? 0}G + {op.nb_palettes_pdv ?? 0}P</div>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">Centrales</div>
+              <div className="text-xs text-gray-500">Centrales</div>
               <div className="text-xl font-semibold">{Object.keys(grouped).length}</div>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">Exemplaires</div>
+              <div className="text-xs text-gray-500">Exemplaires</div>
               <div className="text-xl font-semibold">{(op.total_exemplaires ?? 0).toLocaleString()}</div>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">Poids total</div>
+              <div className="text-xs text-gray-500">Poids total</div>
               <div className="text-xl font-semibold">
                 {op.poids_total_kg ? `${Math.round(op.poids_total_kg).toLocaleString()} kg` : '—'}
               </div>
@@ -288,7 +288,7 @@ export default function Palettisation() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="font-medium text-sm text-gray-900">{centrale}</span>
-                    <span className="text-[10px] text-gray-400">{pals.length} palettes ({nbGrp}G + {nbPdv}P)</span>
+                    <span className="text-xs text-gray-400">{pals.length} palettes ({nbGrp}G + {nbPdv}P)</span>
                   </div>
                   <div className="flex gap-4 text-xs text-gray-500">
                     <span>{totalEx.toLocaleString()} ex</span>
@@ -302,24 +302,24 @@ export default function Palettisation() {
                       const isPdv = p.type_palette === 'pdv'
                       return (
                         <div key={p.id}
-                          className={`border rounded-lg p-3 ${isPdv ? 'bg-amber-50/40 border-amber-200' : 'bg-blue-50/40 border-blue-200'}`}
+                          className={`border rounded-lg p-3.5 ${isPdv ? 'bg-amber-50/40 border-amber-200' : 'bg-blue-50/40 border-blue-200'}`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="flex items-center gap-1.5">
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${isPdv ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${isPdv ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                                 {isPdv ? 'PDV' : 'GRP'}
                               </span>
-                              <span className="text-xs font-semibold text-gray-900">#{p.numero}</span>
+                              <span className="text-sm font-semibold text-gray-900">#{p.numero</span>
                             </div>
                             {isPdv && p.code_pdv ? (
-                              <span className="text-[10px] font-mono font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                              <span className="text-xs font-mono font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
                                 {p.code_pdv}
                               </span>
                             ) : p.taux_remplissage != null ? (
-                              <span className="text-[10px] text-gray-500">{Math.round(p.taux_remplissage * 100)}%</span>
+                              <span className="text-xs text-gray-500">{Math.round(p.taux_remplissage * 100)}%</span>
                             ) : null}
                           </div>
-                          <div className="space-y-0.5 text-[11px] text-gray-600">
+                          <div className="space-y-1 text-sm text-gray-600">
                             <div className="flex justify-between">
                               <span>Exemplaires</span>
                               <span className="font-mono font-medium">{p.nb_exemplaires.toLocaleString()}</span>
