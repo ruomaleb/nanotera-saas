@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
@@ -14,6 +14,33 @@ import Import from './pages/Import'
 import Analyse from './pages/Analyse'
 import Livrables from './pages/Livrables'
 import Palettisation from './pages/Palettisation'
+import AiChat from './components/AiChat'
+
+function AiChatWrapper() {
+  const location = useLocation()
+  // Extraire l'operationId depuis les routes /palettisation/:id, /import, /analyse, /livrables
+  const match = location.pathname.match(/\/palettisation\/([a-f0-9-]{36})/)
+  const operationId = match?.[1]
+
+  // Extraire un label court depuis les query params ou le pathname
+  const pageLabels: Record<string, string> = {
+    '/palettisation': 'Palettisation',
+    '/import':        'Import',
+    '/analyse':       'Analyse',
+    '/livrables':     'Livrables',
+  }
+  const pageBase = '/' + location.pathname.split('/')[1]
+  const pageLabel = pageLabels[pageBase]
+
+  if (!pageLabel) return null  // Pas de chat sur les pages admin (Enseignes, Modèles…)
+
+  return (
+    <AiChat
+      operationId={operationId}
+      operationLabel={operationId ? undefined : pageLabel}
+    />
+  )
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -59,6 +86,7 @@ export default function App() {
         <Route path="/livrables" element={<Livrables />} />
         <Route path="*" element={<Navigate to="/enseignes" replace />} />
       </Routes>
+      <AiChatWrapper />
     </Layout>
   )
 }
