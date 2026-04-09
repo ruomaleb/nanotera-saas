@@ -7,7 +7,7 @@ import ModelSelector from './ModelSelector'
 import {
   Building2, Package, CalendarRange, FileText,
   Upload, Search, BoxesIcon, FileOutput,
-  Settings, BotMessageSquare, LogOut
+  Settings, BotMessageSquare, LogOut, Shield
 } from 'lucide-react'
 
 interface EditorState {
@@ -118,6 +118,13 @@ export default function Layout({ children }: { children: ReactNode }) {
               <BotMessageSquare size={15} />
               Assistant IA
               {aiOpen && <span className="text-[10px] opacity-60 ml-auto">actif</span>}
+            </button>
+            <button
+              onClick={() => navigate('/admin')}
+              className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            >
+              <Shield size={15} />
+              Administration
             </button>
             <button
               onClick={handleLogout}
