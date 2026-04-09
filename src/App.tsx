@@ -14,7 +14,7 @@ import Import from './pages/Import'
 import Analyse from './pages/Analyse'
 import Livrables from './pages/Livrables'
 import Palettisation from './pages/Palettisation'
-import AiChat from './components/AiChat'
+import AiChat from './components/AIChat'
 
 function AiChatWrapper() {
   const location = useLocation()
