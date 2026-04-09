@@ -17,7 +17,7 @@ import Palettisation from './pages/Palettisation'
 import Dashboard from './pages/Dashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import { AdminGlobal, AdminEnseignes, AdminImprimeurs, AdminPrompts } from './pages/AdminPages'
-import AiChat from './components/AiChat'
+import AiChat from './components/AIChat'
 
 function AiChatWrapper() {
   const location = useLocation()

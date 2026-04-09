@@ -102,7 +102,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     background: isActive ? '#EEECFC' : 'transparent',
     borderLeft: `2px solid ${isActive ? '#6B52C8' : 'transparent'}`,
     border: 'none', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none',
-    transition: 'all .1s', display: 'flex',
+    transition: 'all .1s',
   } as React.CSSProperties)
 
   return (
