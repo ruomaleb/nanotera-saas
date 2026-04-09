@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useModel } from '../hooks/useModel'
 import {
   Loader2, AlertCircle, Sparkles, CheckCircle2,
   AlertTriangle, ChevronDown, ChevronRight, Check,
@@ -56,6 +57,7 @@ const PARAM_LABELS: Record<keyof ParamsValues, string> = {
 }
 
 export default function AutoParams({ operationId, currentValues, onApply }: AutoParamsProps) {
+  const { modelId } = useModel()
   const [loading, setLoading]     = useState(false)
   const [result, setResult]       = useState<AutoParamsResult | null>(null)
   const [error, setError]         = useState('')
@@ -68,7 +70,7 @@ export default function AutoParams({ operationId, currentValues, onApply }: Auto
     setError('')
     setResult(null)
     setApplied(false)
-    api(`/api/operations/${operationId}/ai/params`, { method: 'POST' })
+    api(`/api/operations/${operationId}/ai/params`, { method: 'POST', body: { model: modelId } })
       .then((data: AutoParamsResult) => { setResult(data); setExpanded(true); setLoading(false) })
       .catch((e: any) => { setError(e.message || 'Erreur IA'); setLoading(false) })
   }

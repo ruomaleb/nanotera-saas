@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useModel } from '../hooks/useModel'
 import { Loader2, AlertCircle, AlertTriangle, Info, CheckCircle2, Sparkles, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface Anomalie {
@@ -49,6 +50,7 @@ const VERDICT_CONFIG = {
 }
 
 export default function AiInsights({ operationId, onAcceptParams }: AiInsightsProps) {
+  const { modelId } = useModel()
   const [loading, setLoading]   = useState(true)
   const [result, setResult]     = useState<InsightsResult | null>(null)
   const [error, setError]       = useState('')
@@ -59,7 +61,7 @@ export default function AiInsights({ operationId, onAcceptParams }: AiInsightsPr
     if (!operationId) return
     setLoading(true)
     setError('')
-    api(`/api/operations/${operationId}/ai/analyse`, { method: 'POST' })
+    api(`/api/operations/${operationId}/ai/analyse`, { method: 'POST', body: { model: modelId } })
       .then((data: InsightsResult) => { setResult(data); setLoading(false) })
       .catch((e: any) => { setError(e.message || 'Erreur analyse IA'); setLoading(false) })
   }, [operationId])

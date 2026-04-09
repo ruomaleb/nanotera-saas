@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useModel } from '../hooks/useModel'
 import {
   Loader2, AlertCircle, AlertTriangle, Info,
   CheckCircle2, Sparkles, ChevronDown, ChevronRight,
@@ -56,6 +57,7 @@ const TYPE_ICON = {
 }
 
 export default function PaletteAlerts({ operationId, onRelancer }: PaletteAlertsProps) {
+  const { modelId } = useModel()
   const [loading, setLoading]   = useState(true)
   const [result, setResult]     = useState<PaletteAlertsResult | null>(null)
   const [error, setError]       = useState('')
@@ -65,7 +67,7 @@ export default function PaletteAlerts({ operationId, onRelancer }: PaletteAlerts
     if (!operationId) return
     setLoading(true)
     setError('')
-    api(`/api/operations/${operationId}/ai/palettes`, { method: 'POST' })
+    api(`/api/operations/${operationId}/ai/palettes`, { method: 'POST', body: { model: modelId } })
       .then((data: PaletteAlertsResult) => { setResult(data); setLoading(false) })
       .catch((e: any) => { setError(e.message || 'Erreur analyse IA'); setLoading(false) })
   }, [operationId])
