@@ -324,12 +324,14 @@ export default function Palettisation() {
                               <span>Exemplaires</span>
                               <span className="font-mono font-medium">{p.nb_exemplaires.toLocaleString()}</span>
                             </div>
-                            {p.nb_cartons != null && (
-                              <div className="flex justify-between">
-                                <span>Cartons</span>
-                                <span className="font-mono">{p.nb_cartons}</span>
-                              </div>
-                            )}
+                            <div className="flex justify-between">
+                              <span>Cartons</span>
+                              <span className="font-mono">
+                                {p.nb_cartons != null
+                                  ? p.nb_cartons
+                                  : Math.ceil(p.nb_exemplaires / (conditionnement.ex_par_carton))}
+                              </span>
+                            </div>
                             <div className="flex justify-between">
                               <span>Poids</span>
                               <span className="font-mono">{Math.round(p.poids_kg)} kg</span>

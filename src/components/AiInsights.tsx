@@ -100,12 +100,12 @@ export default function AiInsights({ operationId, onAcceptParams }: AiInsightsPr
         <div className="flex items-center gap-2">
           <Sparkles size={13} className="text-purple-500 flex-shrink-0" />
           <span className="text-xs font-medium text-gray-800">Analyse IA</span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${vc.bg} ${vc.border} ${vc.text}`}>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${vc.bg} ${vc.border} ${vc.text}`}>
             {result.verdict === 'ok' ? 'OK' : result.verdict === 'attention' ? 'Attention' : 'Problème'}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-500 text-right max-w-xs truncate hidden sm:block">
+          <span className="text-xs text-gray-500 text-right max-w-xs truncate hidden sm:block">
             {result.resume}
           </span>
           {expanded ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />}
@@ -124,7 +124,7 @@ export default function AiInsights({ operationId, onAcceptParams }: AiInsightsPr
           {/* Anomalies */}
           {result.anomalies.length > 0 && (
             <div className="space-y-2">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                 {result.anomalies.length} point{result.anomalies.length > 1 ? 's' : ''} à vérifier
               </div>
               {result.anomalies.map((a, i) => {
@@ -134,13 +134,13 @@ export default function AiInsights({ operationId, onAcceptParams }: AiInsightsPr
                   <div key={i} className={`border rounded-lg px-3 py-2.5 ${sc.bg} ${sc.border}`}>
                     <div className="flex items-center gap-1.5 mb-1">
                       <AIcon size={12} className={`flex-shrink-0 ${sc.text}`} />
-                      <span className={`text-[11px] font-medium ${sc.text}`}>{a.titre}</span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ml-auto ${sc.text} ${sc.bg}`}>
+                      <span className={`text-xs font-medium ${sc.text}`}>{a.titre}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ml-auto ${sc.text} ${sc.bg}`}>
                         {sc.label}
                       </span>
                     </div>
-                    <p className="text-[11px] text-gray-600 mb-1">{a.detail}</p>
-                    <p className="text-[11px] text-gray-500 italic">→ {a.action}</p>
+                    <p className="text-sm text-gray-600 mb-1">{a.detail}</p>
+                    <p className="text-sm text-gray-500 italic">→ {a.action}</p>
                   </div>
                 )
               })}
@@ -150,11 +150,11 @@ export default function AiInsights({ operationId, onAcceptParams }: AiInsightsPr
           {/* Points positifs */}
           {result.points_positifs.length > 0 && (
             <div className="space-y-1">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Points positifs</div>
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Points positifs</div>
               {result.points_positifs.map((p, i) => (
-                <div key={i} className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                <div key={i} className="flex items-center gap-1.5 text-xs text-gray-600">
                   <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
-                  <span>{p}</span>
+                  <span className="text-sm">{p}</span>
                 </div>
               ))}
             </div>
@@ -169,7 +169,7 @@ export default function AiInsights({ operationId, onAcceptParams }: AiInsightsPr
               >
                 <div className="flex items-center gap-1.5">
                   <Sparkles size={11} className="text-purple-500" />
-                  <span className="text-[11px] font-medium text-purple-700">Paramètres recommandés</span>
+                  <span className="text-xs font-medium text-purple-700">Paramètres recommandés</span>
                 </div>
                 {showReco ? <ChevronDown size={11} className="text-purple-400" /> : <ChevronRight size={11} className="text-purple-400" />}
               </button>
@@ -182,18 +182,18 @@ export default function AiInsights({ operationId, onAcceptParams }: AiInsightsPr
                       { label: 'Poids/ex',    value: `${result.recommandation_conditionnement.poids_unitaire_kg} kg` },
                     ].map(s => (
                       <div key={s.label} className="bg-gray-50 rounded-lg px-2 py-1.5 text-center">
-                        <div className="text-[9px] text-gray-400 uppercase">{s.label}</div>
+                        <div className="text-xs text-gray-400 uppercase">{s.label}</div>
                         <div className="text-sm font-semibold text-gray-900 mt-0.5">{s.value}</div>
                       </div>
                     ))}
                   </div>
-                  <p className="text-[11px] text-gray-500 italic">
+                  <p className="text-sm text-gray-500 italic">
                     {result.recommandation_conditionnement.justification}
                   </p>
                   {onAcceptParams && (
                     <button
                       onClick={() => onAcceptParams(result.recommandation_conditionnement)}
-                      className="w-full h-7 text-[11px] font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                      className="w-full h-7 text-xs font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                     >
                       Appliquer ces paramètres
                     </button>

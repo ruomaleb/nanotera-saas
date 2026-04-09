@@ -107,18 +107,18 @@ export default function PaletteAlerts({ operationId, onRelancer }: PaletteAlerts
         <div className="flex items-center gap-2">
           <Sparkles size={13} className="text-purple-500 flex-shrink-0" />
           <span className="text-xs font-medium text-gray-800">Optimisation IA</span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${vc.bg} ${vc.border} ${vc.text}`}>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${vc.bg} ${vc.border} ${vc.text}`}>
             {vc.label}
           </span>
           {hasGain && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-teal-50 border border-teal-200 text-teal-700 flex items-center gap-1">
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-teal-50 border border-teal-200 text-teal-700 flex items-center gap-1">
               <Zap size={9} />
               {result.gain_palettes} palette{result.gain_palettes > 1 ? 's' : ''} économisable{result.gain_palettes > 1 ? 's' : ''}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-500 hidden sm:block max-w-xs truncate">
+          <span className="text-xs text-gray-500 hidden sm:block max-w-xs truncate">
             {result.resume}
           </span>
           {expanded
@@ -137,7 +137,7 @@ export default function PaletteAlerts({ operationId, onRelancer }: PaletteAlerts
             <div className="flex-1 min-w-0">
               <p className={`text-xs ${vc.text}`}>{result.resume}</p>
               {hasGain && (
-                <p className={`text-[11px] mt-1 ${vc.text} opacity-80`}>
+                <p className={`text-xs mt-1 ${vc.text} opacity-80`}>
                   En fusionnant les palettes sous-remplies : {result.nb_palettes_optimisees} palettes
                   au lieu de {(result.nb_palettes_optimisees ?? 0) + (result.gain_palettes ?? 0)} ({result.gain_palettes} économisée{result.gain_palettes > 1 ? 's' : ''})
                 </p>
@@ -148,7 +148,7 @@ export default function PaletteAlerts({ operationId, onRelancer }: PaletteAlerts
           {/* Alertes */}
           {result.alertes.length > 0 && (
             <div className="space-y-2">
-              <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                 {result.alertes.length} recommandation{result.alertes.length > 1 ? 's' : ''}
               </div>
               {result.alertes.map((a, i) => {
@@ -158,15 +158,15 @@ export default function PaletteAlerts({ operationId, onRelancer }: PaletteAlerts
                   <div key={i} className={`border rounded-lg px-3 py-2.5 ${sc.bg} ${sc.border}`}>
                     <div className="flex items-center gap-1.5 mb-1">
                       <TIcon size={12} className={`flex-shrink-0 ${sc.text}`} />
-                      <span className={`text-[11px] font-medium ${sc.text}`}>{a.titre}</span>
+                      <span className={`text-xs font-medium ${sc.text}`}>{a.titre}</span>
                       {a.centrale !== 'Global' && (
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono ml-auto ${sc.text} opacity-80`}>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ml-auto ${sc.text} opacity-80`}>
                           {a.centrale}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-gray-600 mb-1">{a.detail}</p>
-                    <p className="text-[11px] text-gray-500 italic">→ {a.action}</p>
+                    <p className="text-sm text-gray-600 mb-1">{a.detail}</p>
+                    <p className="text-sm text-gray-500 italic">→ {a.action}</p>
                   </div>
                 )
               })}
@@ -177,7 +177,7 @@ export default function PaletteAlerts({ operationId, onRelancer }: PaletteAlerts
           {hasGain && onRelancer && (
             <button
               onClick={onRelancer}
-              className="w-full h-8 text-[11px] font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-1.5"
+              className="w-full h-8 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-1.5"
             >
               <GitMerge size={12} />
               Relancer le bin-packing avec consolidation
