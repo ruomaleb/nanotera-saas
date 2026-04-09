@@ -309,7 +309,7 @@ export default function Palettisation() {
                               <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${isPdv ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
                                 {isPdv ? 'PDV' : 'GRP'}
                               </span>
-                              <span className="text-sm font-semibold text-gray-900">#{p.numero</span>
+                              <span className="text-sm font-semibold text-gray-900">#{p.numero}</span>
                             </div>
                             {isPdv && p.code_pdv ? (
                               <span className="text-xs font-mono font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../hooks/useOrg'
 import AIChat from './AIChat'
+import ModelSelector from './ModelSelector'
 import {
   Building2, Package, CalendarRange, FileText,
   Upload, Search, BoxesIcon, FileOutput,
@@ -101,6 +102,13 @@ export default function Layout({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="p-2 border-t border-gray-200">
+            {/* Sélecteur de modèle */}
+            <div style={{ padding: '6px 4px 8px', borderBottom: '1px solid #F0EDE8', marginBottom: 4 }}>
+              <div style={{ fontSize: 10, color: '#aaa', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 500, paddingLeft: 4 }}>
+                Modèle IA
+              </div>
+              <ModelSelector />
+            </div>
             <button
               onClick={() => setAiOpen(!aiOpen)}
               className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] transition-colors ${
