@@ -285,6 +285,19 @@ export default function Palettisation() {
                 <button
                   onClick={() => toggleCentrale(centrale)}
                   className="w-full px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between hover:bg-gray-100 transition-colors"
+                  data-selectable={JSON.stringify({
+                    type: 'centrale',
+                    label: `Centrale ${centrale}`,
+                    data: {
+                      centrale,
+                      nb_palettes: pals.length,
+                      nb_palettes_groupees: nbGrp,
+                      nb_palettes_pdv: nbPdv,
+                      total_exemplaires: totalEx,
+                      poids_total_kg: Math.round(totalKg),
+                    }
+                  })}
+                  data-selectable-label={`Centrale ${centrale}`}
                 >
                   <div className="flex items-center gap-3">
                     <span className="font-medium text-sm text-gray-900">{centrale}</span>
@@ -303,6 +316,21 @@ export default function Palettisation() {
                       return (
                         <div key={p.id}
                           className={`border rounded-lg p-3.5 ${isPdv ? 'bg-amber-50/40 border-amber-200' : 'bg-blue-50/40 border-blue-200'}`}
+                          data-selectable={JSON.stringify({
+                            type: isPdv ? 'palette_pdv' : 'palette_groupee',
+                            label: `Palette ${isPdv ? 'PDV' : 'GRP'} #${p.numero} — ${p.centrale_nom}`,
+                            data: {
+                              centrale: p.centrale_nom,
+                              numero: p.numero,
+                              type: p.type_palette,
+                              nb_exemplaires: p.nb_exemplaires,
+                              nb_cartons: p.nb_cartons,
+                              poids_kg: Math.round(p.poids_kg),
+                              taux_remplissage: p.taux_remplissage,
+                              code_pdv: p.code_pdv,
+                            }
+                          })}
+                          data-selectable-label={`Palette ${isPdv ? 'PDV' : 'GRP'} #${p.numero}`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="flex items-center gap-1.5">

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
+import { SelectionProvider } from './components/SelectionContext'
 import Login from './pages/Login'
 import Enseignes from './pages/Enseignes'
 import Operations from './pages/Operations'
@@ -73,6 +74,7 @@ export default function App() {
   }
 
   return (
+    <SelectionProvider>
     <Layout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
@@ -96,5 +98,6 @@ export default function App() {
       </Routes>
       <AiChatWrapper />
     </Layout>
+    </SelectionProvider>
   )
 }

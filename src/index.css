@@ -119,3 +119,48 @@
     @apply text-stone-400 font-medium uppercase tracking-wide;
   }
 }
+
+/* ── Mode sélection (element picker) ────────────────────────── */
+
+/* Curseur crosshair sur toute la page */
+body.selection-mode,
+body.selection-mode * {
+  cursor: crosshair !important;
+}
+
+/* Décaler le contenu sous le bandeau */
+body.selection-mode #root > div {
+  margin-top: 40px;
+}
+
+/* Highlight au survol des éléments sélectionnables */
+body.selection-mode [data-selectable] {
+  position: relative;
+  transition: outline .1s, box-shadow .1s;
+}
+
+body.selection-mode [data-selectable]:hover {
+  outline: 2px solid #6B52C8 !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(107, 82, 200, 0.08);
+  border-radius: 8px;
+  z-index: 10;
+}
+
+/* Badge "Cliquer pour sélectionner" au survol */
+body.selection-mode [data-selectable]:hover::after {
+  content: attr(data-selectable-label);
+  position: absolute;
+  top: -26px;
+  left: 0;
+  background: #6B52C8;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
+  font-family: 'DM Sans', sans-serif;
+}
