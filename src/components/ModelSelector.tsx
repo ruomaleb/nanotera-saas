@@ -60,13 +60,11 @@ export default function ModelSelector() {
       {/* Dropdown */}
       {open && (
         <div style={{
-          position: 'absolute', bottom: 36, left: 0,
-          background: '#fff',
-          border: '1px solid #E8E6E0',
-          borderRadius: 10,
-          boxShadow: '0 -4px 16px rgba(0,0,0,0.08)',
-          minWidth: 240,
-          zIndex: 100,
+          position: 'fixed',
+          bottom: 120,
+          left: 12,
+          width: 220,
+          zIndex: 9999,
           overflow: 'hidden',
         }}>
           {/* Header */}
