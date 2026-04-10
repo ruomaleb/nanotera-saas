@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useOpContext } from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
@@ -163,6 +164,7 @@ type Mode = 'view' | 'edit'
 export default function Palettisation() {
   const { operationId } = useParams()
   const navigate = useNavigate()
+  const { setCurrentOp } = useOpContext()
   const [operations, setOperations]     = useState<any[]>([])
   const [selectedOp, setSelectedOp]     = useState(operationId || '')
   const [op, setOp]                     = useState<any>(null)
@@ -208,6 +210,9 @@ export default function Palettisation() {
     ])
 
     setOp(opResp.data)
+    if (opResp.data) {
+      setCurrentOp({ id: opResp.data.id, code: opResp.data.code_operation, nom: opResp.data.nom_operation ?? '', statut: opResp.data.statut })
+    }
     setPalettes(palResp.data ?? [])
     if (palResp.data) {
       setExpandedCentrales(new Set(palResp.data.map((p: any) => p.centrale_nom)))
