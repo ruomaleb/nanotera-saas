@@ -53,6 +53,75 @@ function StatusIcon({ status }: { status: string }) {
   return <XCircle size={14} className="text-red-500 flex-shrink-0" />
 }
 
+
+function IssueRow({ issue, index }: { issue: any; index: number }) {
+  if (typeof issue === 'string') {
+    return (
+      <div className="flex items-start gap-2 py-2 border-b border-stone-100 last:border-0 text-xs">
+        <span className="text-stone-400 font-mono w-5 flex-shrink-0 pt-0.5">{index + 1}</span>
+        <span className="text-stone-700">{issue}</span>
+      </div>
+    )
+  }
+
+  // Extract the most useful fields
+  const code    = issue.code_pdv || issue.code || issue.id
+  const nom     = issue.nom_pdv  || issue.nom  || issue.name
+  const ville   = issue.ville
+  const qte     = issue.quantite ?? issue.quantite_source ?? issue.qty
+  const note    = issue.note     || issue.message || issue.detail
+  const type    = issue.type     || issue.error_type
+  const central = issue.regroupement || issue.centrale
+
+  return (
+    <div className="flex items-start gap-2 py-2.5 border-b border-stone-100 last:border-0 text-xs">
+      <span className="text-stone-300 font-mono w-5 flex-shrink-0 pt-0.5">{index + 1}</span>
+      <div className="flex-1 min-w-0 space-y-0.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {code && <span className="font-mono text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded text-[10px]">{code}</span>}
+          {nom  && <span className="font-medium text-stone-800 truncate">{nom}</span>}
+          {ville && <span className="text-stone-400">{ville}</span>}
+          {central && <span className="text-stone-400 text-[10px] bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded">{central}</span>}
+        </div>
+        {note && <div className="text-stone-500 leading-relaxed">{note}</div>}
+        {type && !note && <div className="text-stone-400 italic">{type}</div>}
+        {qte !== undefined && (
+          <div className="text-stone-400">
+            Quantité : <span className="font-mono font-medium text-stone-600">{Number(qte).toLocaleString('fr-FR')}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function IssueList({ issues }: { issues: any[] }) {
+  const [showAll, setShowAll] = useState(false)
+  const MAX = 5
+  const visible = showAll ? issues : issues.slice(0, MAX)
+
+  return (
+    <div className="mt-2 bg-stone-50 rounded-lg border border-stone-200 overflow-hidden">
+      <div className="px-3 py-2 border-b border-stone-200 flex items-center justify-between">
+        <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">
+          {issues.length} anomalie{issues.length > 1 ? 's' : ''}
+        </span>
+      </div>
+      <div className="px-3">
+        {visible.map((issue, i) => <IssueRow key={i} issue={issue} index={i} />)}
+      </div>
+      {issues.length > MAX && (
+        <button
+          onClick={e => { e.stopPropagation(); setShowAll(s => !s) }}
+          className="w-full py-2 text-[11px] text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors border-t border-stone-200"
+        >
+          {showAll ? 'Réduire' : `Voir les ${issues.length - MAX} suivantes`}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function Analyse() {
   const navigate = useNavigate()
   const [operations, setOperations] = useState<any[]>([])
@@ -65,7 +134,7 @@ export default function Analyse() {
     supabase
       .from('ops_operations')
       .select('id, code_operation, nom_operation, statut, nb_magasins, total_exemplaires, nb_centrales, nb_palettes, nb_palettes_grp, nb_palettes_pdv, rapport_controles, donnees_normalisees, poids_unitaire_kg, ex_par_paquet, ex_par_carton, cartons_par_palette, seuil_pdv')
-      .in('statut', ['import', 'analyse', 'palettisation', 'livrables', 'termine'])
+      .in('statut', ['analyse', 'palettisation', 'livrables', 'termine'])
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         setOperations(data ?? [])
@@ -218,11 +287,8 @@ export default function Analyse() {
                       )}
                     </div>
                     {isExpanded && c.issues && c.issues.length > 0 && (
-                      <div className="px-4 pb-3 pt-1 bg-gray-50/30">
-                        <div className="text-[10px] text-gray-400 mb-1">Premieres anomalies :</div>
-                        <pre className="text-[10px] bg-white border border-gray-200 rounded p-2 overflow-x-auto max-h-40 text-gray-600">
-                          {JSON.stringify(c.issues.slice(0, 5), null, 2)}
-                        </pre>
+                      <div className="px-4 pb-3 pt-1">
+                        <IssueList issues={c.issues} />
                       </div>
                     )}
                   </div>
@@ -289,32 +355,11 @@ export default function Analyse() {
           </div>
 
           {/* Next step */}
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-2">
-              <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${
-                op.statut === 'import'        ? 'bg-stone-50 text-stone-500 border-stone-200' :
-                op.statut === 'analyse'       ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                op.statut === 'palettisation' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                'bg-emerald-50 text-emerald-700 border-emerald-200'
-              }`}>
-                {op.statut === 'import'        ? 'Importé — analyse en attente' :
-                 op.statut === 'analyse'       ? 'Analysé — prêt pour palettisation' :
-                 op.statut === 'palettisation' ? 'Palettisé' : 'Terminé'}
-              </span>
-            </div>
-            {op.statut === 'import' ? (
-              <button onClick={() => navigate('/import')}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors">
-                Retour à l'import <ArrowRight size={14} />
-              </button>
-            ) : (
-              <button onClick={() => navigate(`/palettisation/${op.id}`)}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
-                {op.statut === 'palettisation' || op.statut === 'livrables' || op.statut === 'termine'
-                  ? 'Voir la palettisation' : 'Lancer la palettisation'}
-                <ArrowRight size={14} />
-              </button>
-            )}
+          <div className="flex justify-end">
+            <button onClick={() => navigate(`/palettisation/${op.id}`)}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+              Lancer la palettisation <ArrowRight size={14} />
+            </button>
           </div>
         </div>
       )}
