@@ -22,8 +22,9 @@ interface FormData {
   particularites:  string
 
   // Étape 3 — Document & impression
-  format_fini:             string
   format_devise:           string
+  bijointage:              boolean
+  ex_par_paquet_mode:      string
   optimisation_acceptee:   boolean
   optimisation_cotes:      string
   pagination:              string
@@ -153,7 +154,8 @@ export default function NewOperation() {
     enseigne_id: '', categorie: 'prospectus', sous_categorie: 'bal',
     code_operation: '', nom_operation: '', date_debut: '', date_fin: '',
     qte_estimatives: '', particularites: '',
-    format_fini: '', format_devise: '', optimisation_acceptee: false, optimisation_cotes: '',
+    format_devise: '', optimisation_acceptee: false, optimisation_cotes: '',
+    bijointage: false, ex_par_paquet_mode: 'imprimeur',
     pagination: '', pagination_interieure: '', pagination_couverture: '0',
     faconnage: '', brochage: '', type_colle: '', grammage: '',
     type_encre: 'Sans huiles minérales', profil_icc: '', pct_fibre_recyclee: '',
@@ -296,8 +298,7 @@ export default function NewOperation() {
       qte_estimatives: form.qte_estimatives ? parseInt(form.qte_estimatives) : null,
       particularites:  form.particularites.trim() || null,
       // Étape 3 — document
-      format_document:        form.format_devise || form.format_fini || null,
-      format_fini:            form.format_fini || null,
+      format_document:        form.format_devise || null,
       format_devise:          form.format_devise || null,
       optimisation_acceptee:  form.optimisation_acceptee,
       optimisation_cotes:     form.optimisation_cotes.trim() || null,
@@ -451,7 +452,7 @@ export default function NewOperation() {
             <SectionTitle>Format & pagination</SectionTitle>
             <div className="grid grid-cols-3 gap-3">
               <FieldGroup label="Format fini (cm)" hint="Sortie machine">
-                <input value={form.format_fini} onChange={e => set('format_fini', e.target.value)}
+                <input value={form.format_devise} onChange={e => set('format_devise', e.target.value)}
                   className={inputCls} placeholder="20x26" />
               </FieldGroup>
               <FieldGroup label="Format devisé (cm)" hint="Après façonnage">
@@ -619,6 +620,124 @@ export default function NewOperation() {
               </div>
             )}
 
+            {/* ── Conditionnement sortie machine ── */}
+            {(() => {
+              const imp = selectedImprimeur
+              if (!imp) return null
+
+              const multiple = imp.multiple_impose || 100
+              const canBijointage = imp.bijointage && form.pagination
+                && parseInt(form.pagination) <= (imp.bijointage_seuil_pages || 12)
+
+              // Options valides selon le multiple imposé
+              const options: { value: string; label: string; hint: string }[] = []
+              // Standard : multiples du multiple_impose jusqu'à 200
+              for (const n of [multiple, multiple * 2, multiple * 3]) {
+                if (n <= 300) options.push({
+                  value: String(n),
+                  label: `${n} ex/paquet`,
+                  hint: n === multiple ? 'Standard imprimeur' : `${n / multiple}× le multiple`,
+                })
+              }
+              // Bijointage si applicable
+              if (canBijointage) options.push({
+                value: String(multiple),
+                label: `${multiple} ex/paquet en bijointage`,
+                hint: `${multiple/2 || multiple} tête + ${multiple/2 || multiple} bêche (pagination ≤ ${imp.bijointage_seuil_pages} pages)`,
+              })
+
+              const currentVal = form.ex_par_paquet || String(multiple)
+
+              return (
+                <div>
+                  <SectionTitle>Conditionnement sortie machine</SectionTitle>
+                  <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-3">
+                    {/* Info imprimeur */}
+                    <div className="flex items-center gap-3 text-xs text-stone-500 flex-wrap">
+                      <span className="font-medium text-stone-700">{imp.nom}</span>
+                      <span>·</span>
+                      <span>Multiple imposé : <strong className="text-stone-800">{multiple} ex</strong></span>
+                      {imp.bijointage && (
+                        <span className="flex items-center gap-1">
+                          · Bijointage possible
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            canBijointage
+                              ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                              : 'bg-stone-100 text-stone-400'
+                          }`}>
+                            {canBijointage ? `applicable (${form.pagination}p ≤ ${imp.bijointage_seuil_pages}p)` : `non applicable (pagination > ${imp.bijointage_seuil_pages}p)`}
+                          </span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Sélection mode */}
+                    <div>
+                      <div className="text-xs text-stone-500 mb-2">Nombre d'exemplaires par paquet</div>
+                      <div className="flex flex-col gap-2">
+                        {/* Option standard imprimeur */}
+                        {[
+                          { val: String(multiple), label: `${multiple} ex/paquet`, hint: 'Standard — recommandé', badge: 'recommandé' },
+                          ...(multiple > 50 ? [{ val: String(Math.round(multiple/2)), label: `${Math.round(multiple/2)} ex/paquet`, hint: `Demi-multiple (${multiple}/2)`, badge: '' }] : []),
+                          ...(canBijointage ? [{ val: `${multiple}_bij`, label: `${multiple} ex/paquet en bijointage`, hint: `Tête-bêche — convient aux petites paginations ≤ ${imp.bijointage_seuil_pages}p`, badge: 'bijointage' }] : []),
+                          { val: 'custom', label: 'Autre quantité', hint: 'Saisie libre si accord imprimeur', badge: '' },
+                        ].map(opt => {
+                          const selected = form.ex_par_paquet_mode === opt.val ||
+                            (opt.val === String(multiple) && !form.ex_par_paquet_mode)
+                          return (
+                            <label key={opt.val}
+                              className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                                selected ? 'border-brand-400 bg-brand-50' : 'border-stone-200 bg-white hover:border-stone-300'
+                              }`}>
+                              <input type="radio" name="ex_paquet_mode" value={opt.val}
+                                checked={selected}
+                                onChange={() => {
+                                  set('ex_par_paquet_mode', opt.val)
+                                  set('bijointage', opt.val.includes('bij') ? 'true' as any : 'false' as any)
+                                  if (opt.val !== 'custom') {
+                                    set('ex_par_paquet', opt.val.replace('_bij', ''))
+                                  }
+                                }}
+                                className="accent-brand-500 flex-shrink-0" />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-medium ${selected ? 'text-brand-700' : 'text-stone-700'}`}>
+                                    {opt.label}
+                                  </span>
+                                  {opt.badge && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                      opt.badge === 'recommandé' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                      opt.badge === 'bijointage' ? 'bg-teal-50 text-teal-700 border border-teal-200' : ''
+                                    }`}>{opt.badge}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-stone-400 mt-0.5">{opt.hint}</div>
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+
+                      {/* Saisie custom */}
+                      {form.ex_par_paquet_mode === 'custom' && (
+                        <div className="mt-2">
+                          <input type="number" value={form.ex_par_paquet}
+                            onChange={e => set('ex_par_paquet', e.target.value)}
+                            className={inputCls}
+                            placeholder={`Multiple de ${multiple} recommandé`} />
+                          {form.ex_par_paquet && parseInt(form.ex_par_paquet) % multiple !== 0 && (
+                            <div className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                              ⚠ {form.ex_par_paquet} n'est pas un multiple de {multiple} — confirmer avec l'imprimeur
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             <SectionTitle>Dates de production</SectionTitle>
             <div className="grid grid-cols-2 gap-3">
               <FieldGroup label="Date dépôt fichiers (BAT)">
@@ -638,9 +757,18 @@ export default function NewOperation() {
           <div className="space-y-4">
             <SectionTitle>Conditionnement</SectionTitle>
             <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="Ex / paquet" hint="Sortie machine imprimeur" source={defaultSources.ex_par_paquet}>
-                <input type="number" value={form.ex_par_paquet}
-                  onChange={e => set('ex_par_paquet', e.target.value)} className={inputCls} placeholder="100" />
+              <FieldGroup label="Ex / paquet" hint={form.ex_par_paquet_mode && form.ex_par_paquet_mode !== 'custom' ? "Défini à l'étape 3" : "Sortie machine imprimeur"} source={defaultSources.ex_par_paquet}>
+                {form.ex_par_paquet && form.ex_par_paquet_mode !== 'custom' ? (
+                  <div className="flex items-center justify-between px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg">
+                    <span className="text-sm font-medium text-stone-800">{form.ex_par_paquet} ex/paquet</span>
+                    {form.bijointage && <span className="text-xs text-teal-600 border border-teal-200 bg-teal-50 px-2 py-0.5 rounded-full">bijointage</span>}
+                    <button type="button" onClick={() => { set('ex_par_paquet_mode', 'custom') }}
+                      className="text-xs text-stone-400 hover:text-brand-600 transition-colors">Modifier</button>
+                  </div>
+                ) : (
+                  <input type="number" value={form.ex_par_paquet}
+                    onChange={e => set('ex_par_paquet', e.target.value)} className={inputCls} placeholder="100" />
+                )}
               </FieldGroup>
               <FieldGroup label="Ex / carton" hint="Mise sous carton Frétin" source={defaultSources.ex_par_carton}>
                 <input type="number" value={form.ex_par_carton}
@@ -686,7 +814,7 @@ export default function NewOperation() {
                 <div>Code : <span className="font-medium text-stone-900">{form.code_operation || '—'}</span></div>
                 <div>Nom : <span className="font-medium text-stone-900">{form.nom_operation || '—'}</span></div>
                 <div>Validité : <span className="font-medium text-stone-900">{form.date_debut && form.date_fin ? `${form.date_debut} → ${form.date_fin}` : '—'}</span></div>
-                {form.pagination && <div>Document : <span className="font-medium text-stone-900">{form.pagination}p · {form.format_devise || form.format_fini} · {form.grammage} g/m²</span></div>}
+                {form.pagination && <div>Document : <span className="font-medium text-stone-900">{form.pagination}p · {form.format_devise} · {form.grammage} g/m²</span></div>}
                 {form.brochage && <div>Finition : <span className="font-medium text-stone-900">{form.faconnage} · {form.brochage}</span></div>}
                 {form.imprimeur_id && <div>Imprimeur : <span className="font-medium text-stone-900">{selectedImprimeur?.nom}</span></div>}
                 <div>Conditionnement : <span className="font-medium text-stone-900">{form.ex_par_paquet}/{form.ex_par_carton}/{form.cartons_par_palette} · seuil {form.seuil_pdv}</span></div>
