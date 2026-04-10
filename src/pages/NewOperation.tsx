@@ -451,11 +451,7 @@ export default function NewOperation() {
 
             <SectionTitle>Format & pagination</SectionTitle>
             <div className="grid grid-cols-3 gap-3">
-              <FieldGroup label="Format fini (cm)" hint="Sortie machine">
-                <input value={form.format_devise} onChange={e => set('format_devise', e.target.value)}
-                  className={inputCls} placeholder="20x26" />
-              </FieldGroup>
-              <FieldGroup label="Format devisé (cm)" hint="Après façonnage">
+              <FieldGroup label="Format (cm)" hint="Format devisé après façonnage" source={defaultSources.format_document}>
                 <input value={form.format_devise} onChange={e => set('format_devise', e.target.value)}
                   className={inputCls} placeholder="20x25" />
               </FieldGroup>
