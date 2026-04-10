@@ -161,11 +161,19 @@ export default function OperationDetail() {
               return (
                 <div key={s} className="flex items-center flex-1">
                   <button
-                    onClick={() => handleUpdateStatut(s)}
+                    onClick={() => {
+                      const routes: Record<string, string> = {
+                        import:        '/import',
+                        analyse:       '/analyse',
+                        palettisation: `/palettisation/${op.id}`,
+                        livrables:     `/livrables/${op.id}`,
+                      }
+                      if (routes[s]) navigate(routes[s])
+                    }}
                     className={`flex-1 py-1.5 text-[10px] font-medium text-center border-b-2 transition-colors ${
                       current ? 'border-indigo-500 text-indigo-700 bg-indigo-50' :
-                      done ? 'border-indigo-300 text-indigo-500' :
-                      'border-gray-200 text-gray-400 hover:text-gray-500 hover:border-gray-300'
+                      done    ? 'border-indigo-300 text-indigo-500 hover:text-indigo-700 cursor-pointer' :
+                      'border-gray-200 text-gray-400'
                     }`}
                   >
                     {STATUT_LABELS[s]}
@@ -267,6 +275,7 @@ export default function OperationDetail() {
               </div>
             </button>
             <button
+              onClick={() => navigate('/analyse')}
               className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
             >
               <Search size={16} className="text-gray-400" />
@@ -287,6 +296,7 @@ export default function OperationDetail() {
               </div>
             </button>
             <button
+              onClick={() => navigate(`/livrables/${op.id}`)}
               className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
             >
               <FileOutput size={16} className="text-gray-400" />
