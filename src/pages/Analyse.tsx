@@ -65,7 +65,7 @@ export default function Analyse() {
     supabase
       .from('ops_operations')
       .select('id, code_operation, nom_operation, statut, nb_magasins, total_exemplaires, nb_centrales, nb_palettes, nb_palettes_grp, nb_palettes_pdv, rapport_controles, donnees_normalisees, poids_unitaire_kg, ex_par_paquet, ex_par_carton, cartons_par_palette, seuil_pdv')
-      .in('statut', ['analyse', 'palettisation', 'livrables', 'termine'])
+      .in('statut', ['import', 'analyse', 'palettisation', 'livrables', 'termine'])
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         setOperations(data ?? [])
@@ -289,11 +289,32 @@ export default function Analyse() {
           </div>
 
           {/* Next step */}
-          <div className="flex justify-end">
-            <button onClick={() => navigate(`/palettisation/${op.id}`)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
-              Lancer la palettisation <ArrowRight size={14} />
-            </button>
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${
+                op.statut === 'import'        ? 'bg-stone-50 text-stone-500 border-stone-200' :
+                op.statut === 'analyse'       ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                op.statut === 'palettisation' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                'bg-emerald-50 text-emerald-700 border-emerald-200'
+              }`}>
+                {op.statut === 'import'        ? 'Importé — analyse en attente' :
+                 op.statut === 'analyse'       ? 'Analysé — prêt pour palettisation' :
+                 op.statut === 'palettisation' ? 'Palettisé' : 'Terminé'}
+              </span>
+            </div>
+            {op.statut === 'import' ? (
+              <button onClick={() => navigate('/import')}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors">
+                Retour à l'import <ArrowRight size={14} />
+              </button>
+            ) : (
+              <button onClick={() => navigate(`/palettisation/${op.id}`)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+                {op.statut === 'palettisation' || op.statut === 'livrables' || op.statut === 'termine'
+                  ? 'Voir la palettisation' : 'Lancer la palettisation'}
+                <ArrowRight size={14} />
+              </button>
+            )}
           </div>
         </div>
       )}
