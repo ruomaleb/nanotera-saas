@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../hooks/useOrg'
-import { ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react'
 import type { Enseigne, Imprimeur, SupportType } from '../types/database'
 
 type Step = 1 | 2 | 3 | 4
@@ -149,6 +149,8 @@ export default function NewOperation() {
   const [linkedImprimeurs, setLinkedImprimeurs] = useState<string[]>([])
   const [typesPalette, setTypesPalette] = useState<any[]>([])
   const [defaultSources, setDefaultSources] = useState<Record<string, string>>({})
+  const [aiOptimizing, setAiOptimizing]   = useState(false)
+  const [aiSuggestion, setAiSuggestion]   = useState<any>(null)
 
   const [form, setForm] = useState<FormData>({
     enseigne_id: '', categorie: 'prospectus', sous_categorie: 'bal',
@@ -273,6 +275,28 @@ export default function NewOperation() {
       })
   }, [form.imprimeur_id, imprimeurs])
 
+  // Calculs dérivés pour l'étape 4
+  const computedPoids = (() => {
+    if (form.poids_unitaire_kg) return parseFloat(form.poids_unitaire_kg)
+    const p = parseInt(form.pagination || form.pagination_interieure || '0')
+    const g = parseFloat(form.grammage || '0')
+    const fmt = form.format_devise || '20x25'
+    const [w, h] = fmt.toLowerCase().split(/[x×]/).map(Number)
+    if (!p || !g || !w || !h) return null
+    // Calcul: (p pages / 2 feuilles) * surface m² * grammage
+    const surfaceM2 = (w / 100) * (h / 100)
+    return Math.round(((p / 2) * surfaceM2 * g) * 1000) / 1000
+  })()
+
+  const exPaquet    = parseInt(form.ex_par_paquet || '100')
+  const exCarton    = parseInt(form.ex_par_carton || '200')
+  const crtPalette  = parseInt(form.cartons_par_palette || '48')
+  const seuilPdv    = parseInt(form.seuil_pdv || '2800')
+  const qteTotal    = parseInt(form.qte_estimatives || '0')
+  const exPalette   = exCarton * crtPalette
+  const poidsPalette = computedPoids && exPalette ? Math.round(exPalette * computedPoids) : null
+  const nbPalEstim  = qteTotal && exPalette ? Math.ceil(qteTotal / exPalette) : null
+
   const selectedEnseigne  = enseignes.find(e => e.id === form.enseigne_id)
   const selectedImprimeur = imprimeurs.find(i => i.id === form.imprimeur_id)
 
@@ -280,6 +304,48 @@ export default function NewOperation() {
     if (s === 1) return !!form.enseigne_id && !!form.categorie
     if (s === 2) return !!form.code_operation.trim()
     return true
+  }
+
+  const handleAiOptimize = async () => {
+    setAiOptimizing(true)
+    setAiSuggestion(null)
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_API_URL || 'https://nanotera-api-saas-production.up.railway.app'}/api/ai/optimize-conditionnement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pagination:       parseInt(form.pagination || '0'),
+          grammage:         parseFloat(form.grammage || '0'),
+          format:           form.format_devise,
+          qte_estimatives:  parseInt(form.qte_estimatives || '0'),
+          ex_par_paquet:    exPaquet,
+          ex_par_carton:    exCarton,
+          crt_palette:      crtPalette,
+          seuil_pdv:        seuilPdv,
+          poids_unitaire:   computedPoids,
+          imprimeur:        selectedImprimeur?.nom,
+          multiple_impose:  selectedImprimeur?.multiple_impose,
+          bijointage:       form.bijointage,
+        })
+      })
+      const data = await resp.json()
+      setAiSuggestion(data)
+    } catch {
+      setAiSuggestion({ error: 'Impossible de contacter l\'IA. Vérifiez votre connexion.' })
+    } finally {
+      setAiOptimizing(false)
+    }
+  }
+
+  const applyAiSuggestion = () => {
+    if (!aiSuggestion?.conditionnement) return
+    const s = aiSuggestion.conditionnement
+    if (s.ex_par_paquet)       set('ex_par_paquet',       String(s.ex_par_paquet))
+    if (s.ex_par_carton)       set('ex_par_carton',       String(s.ex_par_carton))
+    if (s.cartons_par_palette) set('cartons_par_palette', String(s.cartons_par_palette))
+    if (s.seuil_pdv)           set('seuil_pdv',           String(s.seuil_pdv))
+    if (s.poids_unitaire_kg)   set('poids_unitaire_kg',   String(s.poids_unitaire_kg))
+    setAiSuggestion(null)
   }
 
   const handleCreate = async () => {
@@ -748,74 +814,172 @@ export default function NewOperation() {
           </div>
         )}
 
-        {/* ── Étape 4 : Logistique ── */}
+        {/* ── Étape 4 : Logistique & calculs ── */}
         {step === 4 && (
-          <div className="space-y-4">
-            <SectionTitle>Conditionnement</SectionTitle>
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="Ex / paquet" hint={form.ex_par_paquet_mode && form.ex_par_paquet_mode !== 'custom' ? "Défini à l'étape 3" : "Sortie machine imprimeur"} source={defaultSources.ex_par_paquet}>
-                {form.ex_par_paquet && form.ex_par_paquet_mode !== 'custom' ? (
-                  <div className="flex items-center justify-between px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg">
-                    <span className="text-sm font-medium text-stone-800">{form.ex_par_paquet} ex/paquet</span>
-                    {form.bijointage && <span className="text-xs text-teal-600 border border-teal-200 bg-teal-50 px-2 py-0.5 rounded-full">bijointage</span>}
-                    <button type="button" onClick={() => { set('ex_par_paquet_mode', 'custom') }}
-                      className="text-xs text-stone-400 hover:text-brand-600 transition-colors">Modifier</button>
+          <div className="space-y-5">
+
+            {/* Valeurs calculées */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <SectionTitle>Valeurs calculées</SectionTitle>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  {
+                    label: 'Poids / exemplaire',
+                    value: computedPoids ? `${computedPoids} kg` : '—',
+                    sub: form.poids_unitaire_kg ? 'saisi manuellement' : (computedPoids ? `${form.pagination}p · ${form.grammage} g/m²` : 'pagination ou grammage manquant'),
+                    ok: !!computedPoids,
+                  },
+                  {
+                    label: 'Exemplaires / palette',
+                    value: exPalette ? exPalette.toLocaleString('fr-FR') : '—',
+                    sub: `${exCarton} ex/crt × ${crtPalette} crt`,
+                    ok: !!exPalette,
+                  },
+                  {
+                    label: 'Poids / palette estimé',
+                    value: poidsPalette ? `${poidsPalette.toLocaleString('fr-FR')} kg` : '—',
+                    sub: poidsPalette ? (poidsPalette > 750 ? '⚠ Dépasse 750 kg standard' : '✓ Dans la norme') : '',
+                    ok: poidsPalette ? poidsPalette <= 750 : null,
+                  },
+                  {
+                    label: 'Nb palettes estimé',
+                    value: nbPalEstim ? `~${nbPalEstim}` : '—',
+                    sub: qteTotal ? `${qteTotal.toLocaleString('fr-FR')} ex total` : 'quantité estimative non renseignée',
+                    ok: !!nbPalEstim,
+                  },
+                  {
+                    label: 'Seuil palette individuelle',
+                    value: seuilPdv ? `${seuilPdv.toLocaleString('fr-FR')} ex` : '—',
+                    sub: computedPoids && seuilPdv ? `≈ ${Math.round(seuilPdv * computedPoids)} kg / palette PDV` : '',
+                    ok: !!seuilPdv,
+                  },
+                  {
+                    label: 'Ex / paquet',
+                    value: form.ex_par_paquet || '—',
+                    sub: form.bijointage ? 'avec bijointage' : selectedImprimeur ? `multiple ${selectedImprimeur.multiple_impose || 100}` : '',
+                    ok: !!form.ex_par_paquet,
+                  },
+                ].map((item, i) => (
+                  <div key={i} className={`rounded-xl p-3 border ${
+                    item.ok === false ? 'bg-amber-50 border-amber-200' :
+                    item.ok === true  ? 'bg-white border-stone-200' :
+                    'bg-stone-50 border-stone-200'
+                  }`}>
+                    <div className="text-xs text-stone-500 mb-1">{item.label}</div>
+                    <div className="text-lg font-semibold text-stone-900">{item.value}</div>
+                    {item.sub && <div className={`text-[11px] mt-0.5 ${item.ok === false ? 'text-amber-600' : 'text-stone-400'}`}>{item.sub}</div>}
                   </div>
-                ) : (
-                  <input type="number" value={form.ex_par_paquet}
-                    onChange={e => set('ex_par_paquet', e.target.value)} className={inputCls} placeholder="100" />
-                )}
-              </FieldGroup>
-              <FieldGroup label="Ex / carton" hint="Mise sous carton Frétin" source={defaultSources.ex_par_carton}>
-                <input type="number" value={form.ex_par_carton}
-                  onChange={e => set('ex_par_carton', e.target.value)} className={inputCls} placeholder="200" />
-              </FieldGroup>
-              <FieldGroup label="Cartons / palette (max)" source={defaultSources.cartons_par_palette}>
-                <input type="number" value={form.cartons_par_palette}
-                  onChange={e => set('cartons_par_palette', e.target.value)} className={inputCls} placeholder="48" />
-              </FieldGroup>
-              <FieldGroup label="Seuil PDV (ex)" hint="Au-delà → palette individuelle" source={defaultSources.seuil_pdv}>
-                <input type="number" value={form.seuil_pdv}
-                  onChange={e => set('seuil_pdv', e.target.value)} className={inputCls} placeholder="2800" />
-              </FieldGroup>
-              <FieldGroup label="Poids unitaire (kg/ex)" hint="Calculé depuis grammage/pagination si vide" source={defaultSources.poids_unitaire_kg}>
-                <input type="number" step="0.001" value={form.poids_unitaire_kg}
-                  onChange={e => set('poids_unitaire_kg', e.target.value)} className={inputCls} placeholder="0.054" />
-              </FieldGroup>
-            </div>
-
-            <SectionTitle>Palette</SectionTitle>
-            <FieldGroup label="Type de palette" hint="Standard = défini par le transporteur de la centrale">
-              <select value={form.type_palette_id} onChange={e => set('type_palette_id', e.target.value)} className={selectCls}>
-                <option value="">Standard (défini par transporteur)</option>
-                {typesPalette.map(tp => (
-                  <option key={tp.id} value={tp.id}>
-                    {tp.nom}{tp.code ? ` (${tp.code})` : ''} — {tp.cartons_max} crt, {tp.poids_max_kg} kg, {tp.hauteur_max_cm} cm{tp.gerbable ? ' · gerbable' : ''}
-                  </option>
                 ))}
-              </select>
-            </FieldGroup>
-
-            <SectionTitle>Notes</SectionTitle>
-            <FieldGroup label="Notes / remarques">
-              <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-                className={`${inputCls} h-16 resize-none`} placeholder="Informations complémentaires..." />
-            </FieldGroup>
-
-            {/* Récapitulatif */}
-            <div className="bg-stone-50 rounded-xl p-4 text-xs space-y-1.5 text-stone-600">
-              <div className="font-medium text-sm text-stone-900 mb-2">Récapitulatif</div>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-                <div>Enseigne : <span className="font-medium text-stone-900">{selectedEnseigne?.nom}</span></div>
-                <div>Code : <span className="font-medium text-stone-900">{form.code_operation || '—'}</span></div>
-                <div>Nom : <span className="font-medium text-stone-900">{form.nom_operation || '—'}</span></div>
-                <div>Validité : <span className="font-medium text-stone-900">{form.date_debut && form.date_fin ? `${form.date_debut} → ${form.date_fin}` : '—'}</span></div>
-                {form.pagination && <div>Document : <span className="font-medium text-stone-900">{form.pagination}p · {form.format_devise} · {form.grammage} g/m²</span></div>}
-                {form.brochage && <div>Finition : <span className="font-medium text-stone-900">{form.faconnage} · {form.brochage}</span></div>}
-                {form.imprimeur_id && <div>Imprimeur : <span className="font-medium text-stone-900">{selectedImprimeur?.nom}</span></div>}
-                <div>Conditionnement : <span className="font-medium text-stone-900">{form.ex_par_paquet}/{form.ex_par_carton}/{form.cartons_par_palette} · seuil {form.seuil_pdv}</span></div>
               </div>
             </div>
+
+            {/* Optimisation IA */}
+            <div className="border border-brand-200 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-brand-50">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-brand-500" />
+                  <span className="text-sm font-medium text-brand-700">Optimisation IA</span>
+                  <span className="text-xs text-brand-400">— analyse le conditionnement selon vos contraintes</span>
+                </div>
+                <button onClick={handleAiOptimize} disabled={aiOptimizing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-brand-500 text-white rounded-lg hover:opacity-85 disabled:opacity-40 transition-all">
+                  {aiOptimizing
+                    ? <><Loader2 size={12} className="animate-spin" /> Analyse…</>
+                    : <><RefreshCw size={12} /> Analyser</>}
+                </button>
+              </div>
+
+              {aiSuggestion && !aiSuggestion.error && (
+                <div className="px-4 py-3 border-t border-brand-100 space-y-3">
+                  {aiSuggestion.analyse && (
+                    <p className="text-sm text-stone-700 leading-relaxed">{aiSuggestion.analyse}</p>
+                  )}
+                  {aiSuggestion.conditionnement && (
+                    <div>
+                      <div className="text-xs font-medium text-stone-500 mb-2">Valeurs suggérées</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {Object.entries(aiSuggestion.conditionnement).map(([k, v]: [string, any]) => (
+                          <div key={k} className="bg-brand-50 border border-brand-200 rounded-lg px-3 py-2">
+                            <div className="text-[10px] text-brand-500">{k.replace(/_/g, ' ')}</div>
+                            <div className="text-sm font-semibold text-brand-800">{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={applyAiSuggestion}
+                        className="mt-3 flex items-center gap-1.5 px-4 py-2 text-xs font-medium bg-brand-500 text-white rounded-lg hover:opacity-85 transition-all">
+                        <Check size={12} /> Appliquer ces valeurs
+                      </button>
+                    </div>
+                  )}
+                  {aiSuggestion.alertes?.length > 0 && (
+                    <div className="space-y-1.5">
+                      {aiSuggestion.alertes.map((a: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" /> {a}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {aiSuggestion?.error && (
+                <div className="px-4 py-3 text-xs text-red-600 border-t border-red-100">{aiSuggestion.error}</div>
+              )}
+            </div>
+
+            {/* Ajustement manuel */}
+            <div>
+              <SectionTitle>Ajustement manuel</SectionTitle>
+              <div className="grid grid-cols-2 gap-3">
+                <FieldGroup label="Ex / paquet" hint={form.ex_par_paquet_mode !== 'custom' ? "Défini étape 3 — modifiable" : "Saisie libre"} source={defaultSources.ex_par_paquet}>
+                  <input type="number" value={form.ex_par_paquet} onChange={e => { set('ex_par_paquet', e.target.value); set('ex_par_paquet_mode', 'custom') }}
+                    className={inputCls} placeholder="100" />
+                </FieldGroup>
+                <FieldGroup label="Ex / carton" hint="Mise sous carton Frétin" source={defaultSources.ex_par_carton}>
+                  <input type="number" value={form.ex_par_carton} onChange={e => set('ex_par_carton', e.target.value)}
+                    className={inputCls} placeholder="200" />
+                </FieldGroup>
+                <FieldGroup label="Cartons / palette (max)" source={defaultSources.cartons_par_palette}>
+                  <input type="number" value={form.cartons_par_palette} onChange={e => set('cartons_par_palette', e.target.value)}
+                    className={inputCls} placeholder="48" />
+                </FieldGroup>
+                <FieldGroup label="Seuil PDV (ex)" hint="Au-delà → palette individuelle" source={defaultSources.seuil_pdv}>
+                  <input type="number" value={form.seuil_pdv} onChange={e => set('seuil_pdv', e.target.value)}
+                    className={inputCls} placeholder="2800" />
+                </FieldGroup>
+                <FieldGroup label="Poids unitaire (kg/ex)" hint={computedPoids ? `Calculé : ${computedPoids} kg` : "Calculé depuis grammage/pagination"} source={defaultSources.poids_unitaire_kg}>
+                  <input type="number" step="0.001" value={form.poids_unitaire_kg} onChange={e => set('poids_unitaire_kg', e.target.value)}
+                    className={inputCls} placeholder={computedPoids ? String(computedPoids) : "0.054"} />
+                </FieldGroup>
+              </div>
+            </div>
+
+            {/* Type palette + notes */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <SectionTitle>Palette</SectionTitle>
+                <FieldGroup label="Type de palette" hint="Standard = défini par le transporteur">
+                  <select value={form.type_palette_id} onChange={e => set('type_palette_id', e.target.value)} className={selectCls}>
+                    <option value="">Standard (défini par transporteur)</option>
+                    {typesPalette.map(tp => (
+                      <option key={tp.id} value={tp.id}>
+                        {tp.nom} — {tp.cartons_max} crt, {tp.poids_max_kg} kg{tp.gerbable ? ' · gerbable' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </FieldGroup>
+              </div>
+              <div>
+                <SectionTitle>Notes</SectionTitle>
+                <FieldGroup label="Remarques">
+                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                    className={`${inputCls} h-20 resize-none`} placeholder="Informations complémentaires..." />
+                </FieldGroup>
+              </div>
+            </div>
+
           </div>
         )}
 
