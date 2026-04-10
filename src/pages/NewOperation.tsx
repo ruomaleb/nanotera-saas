@@ -136,6 +136,54 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
+
+// ── Calcul limites physiques d'un paquet ────────────────────
+const DENSITE_PAPIER: Record<string, number> = {
+  'satine': 0.85, 'satine a': 0.85, 'sc paper': 0.85,
+  'mwc': 1.05, 'offset': 0.70, 'couche': 0.90, 'default': 0.85,
+}
+
+function computePaquetLimits(pagination: number, grammage: number, format: string, typePapier?: string) {
+  if (!pagination || !grammage || !format) return null
+  const dims = format.toLowerCase().replace('×','x').split('x').map(Number)
+  if (dims.length < 2 || !dims[0] || !dims[1]) return null
+  const surfaceM2 = (dims[0] / 100) * (dims[1] / 100)
+  const nbFeuilles = pagination / 2
+  const densite = DENSITE_PAPIER[(typePapier || '').toLowerCase()] ?? DENSITE_PAPIER.default
+  const epaisseurFeuille_um = grammage / (densite * 10000) * 10000  // µm
+  const epaisseurEx_mm      = nbFeuilles * epaisseurFeuille_um / 1000
+  const poidsEx_kg          = nbFeuilles * surfaceM2 * grammage / 1000
+
+  const POIDS_MAX_KG   = 6.0
+  const HAUTEUR_MAX_MM = 150
+
+  const maxParPoids   = Math.floor(POIDS_MAX_KG   / poidsEx_kg)
+  const maxParHauteur = Math.floor(HAUTEUR_MAX_MM  / epaisseurEx_mm)
+  const maxPhysique   = Math.min(maxParPoids, maxParHauteur)
+
+  return {
+    poidsEx_kg:      Math.round(poidsEx_kg * 10000) / 10000,
+    epaisseurEx_mm:  Math.round(epaisseurEx_mm * 100) / 100,
+    maxParPoids,
+    maxParHauteur,
+    maxPhysique,
+    limiteActive: maxParPoids < maxParHauteur ? 'poids' : 'hauteur',
+  }
+}
+
+function recommendedExPaquet(maxPhysique: number, multipleImpose: number): number[] {
+  // Retourne les multiples valides ≤ maxPhysique, du plus grand au plus petit
+  const options: number[] = []
+  let n = multipleImpose
+  while (n <= maxPhysique) {
+    options.push(n)
+    n += multipleImpose
+  }
+  // Si aucun multiple ne rentre, proposer le max physique (accord spécial imprimeur)
+  if (options.length === 0) options.push(maxPhysique)
+  return options.reverse() // du plus grand (optimal) au plus petit
+}
+
 export default function NewOperation() {
   const navigate = useNavigate()
   const { org }  = useOrg()
@@ -274,6 +322,13 @@ export default function NewOperation() {
         } catch {}
       })
   }, [form.imprimeur_id, imprimeurs])
+
+  // Calculs dérivés — limites physiques paquet
+  const physicalLimits = computePaquetLimits(
+    parseInt(form.pagination || '0'),
+    parseFloat(form.grammage || '0'),
+    form.format_devise || '20x25',
+  )
 
   // Calculs dérivés pour l'étape 4
   const computedPoids = (() => {
@@ -714,22 +769,38 @@ export default function NewOperation() {
                 <div>
                   <SectionTitle>Conditionnement sortie machine</SectionTitle>
                   <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-3">
-                    {/* Info imprimeur */}
-                    <div className="flex items-center gap-3 text-xs text-stone-500 flex-wrap">
-                      <span className="font-medium text-stone-700">{imp.nom}</span>
-                      <span>·</span>
-                      <span>Multiple imposé : <strong className="text-stone-800">{multiple} ex</strong></span>
-                      {imp.bijointage && (
-                        <span className="flex items-center gap-1">
-                          · Bijointage possible
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            canBijointage
-                              ? 'bg-teal-50 text-teal-700 border border-teal-200'
-                              : 'bg-stone-100 text-stone-400'
+                    {/* Info imprimeur + physique */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3 text-xs text-stone-500 flex-wrap">
+                        <span className="font-medium text-stone-700">{imp.nom}</span>
+                        <span>·</span>
+                        <span>Multiple imposé : <strong className="text-stone-800">{multiple} ex</strong></span>
+                        {imp.bijointage && (
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                            canBijointage ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-stone-100 text-stone-400 border-stone-200'
                           }`}>
-                            {canBijointage ? `applicable (${form.pagination}p ≤ ${imp.bijointage_seuil_pages}p)` : `non applicable (pagination > ${imp.bijointage_seuil_pages}p)`}
+                            Bijointage {canBijointage ? `✓ (${form.pagination}p ≤ ${imp.bijointage_seuil_pages}p)` : `✗ (${form.pagination}p > ${imp.bijointage_seuil_pages}p)`}
                           </span>
-                        </span>
+                        )}
+                      </div>
+                      {/* Limites physiques */}
+                      {physicalLimits && (
+                        <div className={`flex items-center gap-3 text-xs px-3 py-2 rounded-lg border flex-wrap ${
+                          physicalLimits.maxPhysique < multiple
+                            ? 'bg-red-50 border-red-200 text-red-700'
+                            : 'bg-stone-50 border-stone-200 text-stone-500'
+                        }`}>
+                          <span>Poids/ex : <strong className="text-stone-800">{physicalLimits.poidsEx_kg} kg</strong></span>
+                          <span>·</span>
+                          <span>Épaisseur/ex : <strong className="text-stone-800">{physicalLimits.epaisseurEx_mm} mm</strong></span>
+                          <span>·</span>
+                          <span>Max physique : <strong className={physicalLimits.maxPhysique < multiple ? 'text-red-700' : 'text-stone-800'}>{physicalLimits.maxPhysique} ex/paquet</strong>
+                            <span className="ml-1 opacity-70">(limite : {physicalLimits.limiteActive === 'poids' ? `poids ${(physicalLimits.maxPhysique * physicalLimits.poidsEx_kg).toFixed(1)} kg` : `hauteur ${(physicalLimits.maxPhysique * physicalLimits.epaisseurEx_mm / 10).toFixed(1)} cm`})</span>
+                          </span>
+                          {physicalLimits.maxPhysique < multiple && (
+                            <span className="font-medium">⚠ {multiple} ex/paquet impossible — réduire la quantité</span>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -737,13 +808,29 @@ export default function NewOperation() {
                     <div>
                       <div className="text-xs text-stone-500 mb-2">Nombre d'exemplaires par paquet</div>
                       <div className="flex flex-col gap-2">
-                        {/* Option standard imprimeur */}
-                        {[
-                          { val: String(multiple), label: `${multiple} ex/paquet`, hint: 'Standard — recommandé', badge: 'recommandé' },
-                          ...(multiple > 50 ? [{ val: String(Math.round(multiple/2)), label: `${Math.round(multiple/2)} ex/paquet`, hint: `Demi-multiple (${multiple}/2)`, badge: '' }] : []),
-                          ...(canBijointage ? [{ val: `${multiple}_bij`, label: `${multiple} ex/paquet en bijointage`, hint: `Tête-bêche — convient aux petites paginations ≤ ${imp.bijointage_seuil_pages}p`, badge: 'bijointage' }] : []),
-                          { val: 'custom', label: 'Autre quantité', hint: 'Saisie libre si accord imprimeur', badge: '' },
-                        ].map(opt => {
+                        {/* Options générées depuis les limites physiques + multiple imposé */}
+                        {(() => {
+                          const maxPhys = physicalLimits?.maxPhysique ?? 9999
+                          const validMultiples = recommendedExPaquet(maxPhys, multiple)
+                          const opts = [
+                            ...validMultiples.map((n, idx) => ({
+                              val: String(n),
+                              label: `${n} ex/paquet`,
+                              hint: idx === 0
+                                ? `Maximum physique viable (${(n * (physicalLimits?.poidsEx_kg ?? 0)).toFixed(2)} kg, ${(n * (physicalLimits?.epaisseurEx_mm ?? 0) / 10).toFixed(1)} cm)`
+                                : `${n / multiple}× le multiple imposé`,
+                              badge: idx === 0 ? 'recommandé' : '',
+                            })),
+                            ...(canBijointage ? [{
+                              val: `${multiple}_bij`,
+                              label: `${multiple} ex en bijointage`,
+                              hint: `Tête-bêche — pagination ≤ ${imp.bijointage_seuil_pages}p`,
+                              badge: 'bijointage',
+                            }] : []),
+                            { val: 'custom', label: 'Autre quantité', hint: 'Saisie libre — accord imprimeur requis', badge: '' },
+                          ]
+                          return opts
+                        })().map(opt => {
                           const selected = form.ex_par_paquet_mode === opt.val ||
                             (opt.val === String(multiple) && !form.ex_par_paquet_mode)
                           return (
@@ -858,8 +945,20 @@ export default function NewOperation() {
                   {
                     label: 'Ex / paquet',
                     value: form.ex_par_paquet || '—',
-                    sub: form.bijointage ? 'avec bijointage' : selectedImprimeur ? `multiple ${selectedImprimeur.multiple_impose || 100}` : '',
-                    ok: !!form.ex_par_paquet,
+                    sub: (() => {
+                      const n = parseInt(form.ex_par_paquet || '0')
+                      const max = physicalLimits?.maxPhysique
+                      if (n && max && n > max) return `⚠ Dépasse le max physique (${max} ex)`
+                      if (form.bijointage) return 'avec bijointage'
+                      if (physicalLimits && n) return `${(n * physicalLimits.poidsEx_kg).toFixed(2)} kg · ${(n * physicalLimits.epaisseurEx_mm / 10).toFixed(1)} cm`
+                      return selectedImprimeur ? `multiple ${selectedImprimeur.multiple_impose || 100}` : ''
+                    })(),
+                    ok: (() => {
+                      const n = parseInt(form.ex_par_paquet || '0')
+                      const max = physicalLimits?.maxPhysique
+                      if (n && max && n > max) return false
+                      return !!form.ex_par_paquet
+                    })(),
                   },
                 ].map((item, i) => (
                   <div key={i} className={`rounded-xl p-3 border ${
