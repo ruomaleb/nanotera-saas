@@ -171,17 +171,12 @@ function computePaquetLimits(pagination: number, grammage: number, format: strin
   }
 }
 
-function recommendedExPaquet(maxPhysique: number, multipleImpose: number): number[] {
-  // Retourne les multiples valides ≤ maxPhysique, du plus grand au plus petit
-  const options: number[] = []
-  let n = multipleImpose
-  while (n <= maxPhysique) {
-    options.push(n)
-    n += multipleImpose
-  }
-  // Si aucun multiple ne rentre, proposer le max physique (accord spécial imprimeur)
-  if (options.length === 0) options.push(maxPhysique)
-  return options.reverse() // du plus grand (optimal) au plus petit
+function practicalGroupings(maxPhysique: number): number[] {
+  // Valeurs rondes pratiques et maniables, indépendantes du multiple imposé
+  const ROUND_VALUES = [5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 80, 100, 120, 150, 200]
+  const valid = ROUND_VALUES.filter(v => v <= maxPhysique)
+  if (valid.length === 0) return [Math.max(1, maxPhysique)]
+  return [...valid].reverse() // du plus grand (meilleur remplissage) au plus petit
 }
 
 export default function NewOperation() {
@@ -798,7 +793,7 @@ export default function NewOperation() {
                             <span className="ml-1 opacity-70">(limite : {physicalLimits.limiteActive === 'poids' ? `poids ${(physicalLimits.maxPhysique * physicalLimits.poidsEx_kg).toFixed(1)} kg` : `hauteur ${(physicalLimits.maxPhysique * physicalLimits.epaisseurEx_mm / 10).toFixed(1)} cm`})</span>
                           </span>
                           {physicalLimits.maxPhysique < multiple && (
-                            <span className="font-medium">⚠ {multiple} ex/paquet impossible — réduire la quantité</span>
+                            <span className="font-medium">⚠ {multiple} ex/paquet (multiple machine) impossible à ce grammage/pagination — voir options ci-dessous</span>
                           )}
                         </div>
                       )}
@@ -811,23 +806,28 @@ export default function NewOperation() {
                         {/* Options générées depuis les limites physiques + multiple imposé */}
                         {(() => {
                           const maxPhys = physicalLimits?.maxPhysique ?? 9999
-                          const validMultiples = recommendedExPaquet(maxPhys, multiple)
+                          const groups = practicalGroupings(maxPhys)
+                          // Label contextuel selon position dans la liste
                           const opts = [
-                            ...validMultiples.map((n, idx) => ({
-                              val: String(n),
-                              label: `${n} ex/paquet`,
-                              hint: idx === 0
-                                ? `Maximum physique viable (${(n * (physicalLimits?.poidsEx_kg ?? 0)).toFixed(2)} kg, ${(n * (physicalLimits?.epaisseurEx_mm ?? 0) / 10).toFixed(1)} cm)`
-                                : `${n / multiple}× le multiple imposé`,
-                              badge: idx === 0 ? 'recommandé' : '',
-                            })),
+                            ...groups.map((n, idx) => {
+                              const poids_kg = physicalLimits ? (n * physicalLimits.poidsEx_kg).toFixed(2) : '?'
+                              const haut_cm  = physicalLimits ? (n * physicalLimits.epaisseurEx_mm / 10).toFixed(1) : '?'
+                              // Signal si n est multiple du pas machine
+                              const isMultiple = n % multiple === 0
+                              return {
+                                val: String(n),
+                                label: `${n} ex/paquet`,
+                                hint: `${poids_kg} kg · ${haut_cm} cm${isMultiple ? ` · multiple de ${multiple} ✓` : ''}`,
+                                badge: idx === 0 ? 'recommandé' : (isMultiple ? 'multiple machine' : ''),
+                              }
+                            }),
                             ...(canBijointage ? [{
                               val: `${multiple}_bij`,
                               label: `${multiple} ex en bijointage`,
-                              hint: `Tête-bêche — pagination ≤ ${imp.bijointage_seuil_pages}p`,
+                              hint: `Tête-bêche — ${(multiple * (physicalLimits?.poidsEx_kg ?? 0)).toFixed(2)} kg · pagination ≤ ${imp.bijointage_seuil_pages}p`,
                               badge: 'bijointage',
                             }] : []),
-                            { val: 'custom', label: 'Autre quantité', hint: 'Saisie libre — accord imprimeur requis', badge: '' },
+                            { val: 'custom', label: 'Quantité personnalisée', hint: 'Saisie libre si accord imprimeur', badge: '' },
                           ]
                           return opts
                         })().map(opt => {
@@ -869,16 +869,28 @@ export default function NewOperation() {
 
                       {/* Saisie custom */}
                       {form.ex_par_paquet_mode === 'custom' && (
-                        <div className="mt-2">
+                        <div className="mt-2 space-y-1.5">
                           <input type="number" value={form.ex_par_paquet}
                             onChange={e => set('ex_par_paquet', e.target.value)}
                             className={inputCls}
-                            placeholder={`Multiple de ${multiple} recommandé`} />
-                          {form.ex_par_paquet && parseInt(form.ex_par_paquet) % multiple !== 0 && (
-                            <div className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                              ⚠ {form.ex_par_paquet} n'est pas un multiple de {multiple} — confirmer avec l'imprimeur
-                            </div>
-                          )}
+                            placeholder="Ex: 20, 30, 50..." />
+                          {form.ex_par_paquet && physicalLimits && (() => {
+                            const n = parseInt(form.ex_par_paquet)
+                            const kg = (n * physicalLimits.poidsEx_kg).toFixed(2)
+                            const cm = (n * physicalLimits.epaisseurEx_mm / 10).toFixed(1)
+                            const overMax = n > physicalLimits.maxPhysique
+                            const isMultiple = n % multiple === 0
+                            return (
+                              <div className={`text-xs flex items-center gap-2 px-3 py-2 rounded-lg border ${
+                                overMax ? 'bg-red-50 border-red-200 text-red-700' : 'bg-stone-50 border-stone-200 text-stone-500'
+                              }`}>
+                                {overMax
+                                  ? `⚠ ${n} ex dépasse le max physique (${physicalLimits.maxPhysique} ex) — risque de casse`
+                                  : `${kg} kg · ${cm} cm${isMultiple ? ` · multiple de ${multiple} ✓` : ` · confirmer avec ${imp.nom}`}`
+                                }
+                              </div>
+                            )
+                          })()}
                         </div>
                       )}
                     </div>
