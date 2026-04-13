@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { apiDownload, triggerDownload } from '../lib/api'
@@ -48,147 +48,140 @@ const DESCRIPTIONS: Record<string, (op: any) => string> = {
 
 // ── Chargement CDN dynamique ────────────────────────────────────────
 
-const loadScript = (src: string, globalKey: string): Promise<any> =>
-  new Promise((resolve, reject) => {
-    if ((window as any)[globalKey]) { resolve((window as any)[globalKey]); return }
-    const existing = document.querySelector(`script[src="${src}"]`)
-    if (existing) {
-      existing.addEventListener('load', () => resolve((window as any)[globalKey]))
+function loadAsset(tag: 'script' | 'link', src: string, globalKey?: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if (globalKey && (window as any)[globalKey]) { resolve((window as any)[globalKey]); return }
+    if (document.querySelector(`[src="${src}"], [href="${src}"]`)) {
+      setTimeout(() => resolve(globalKey ? (window as any)[globalKey] : true), 200)
       return
     }
-    const s = document.createElement('script')
-    s.src = src
-    s.onload = () => resolve((window as any)[globalKey])
-    s.onerror = reject
-    document.head.appendChild(s)
+    if (tag === 'script') {
+      const s = document.createElement('script')
+      s.src = src
+      s.onload = () => resolve(globalKey ? (window as any)[globalKey] : true)
+      s.onerror = reject
+      document.head.appendChild(s)
+    } else {
+      const l = document.createElement('link')
+      l.rel = 'stylesheet'; l.href = src
+      l.onload = resolve; l.onerror = reject
+      document.head.appendChild(l)
+    }
   })
-
-// ── Conversion blob → HTML ──────────────────────────────────────────
-
-async function blobToPreviewHtml(blob: Blob, type: 'docx' | 'xlsx'): Promise<string> {
-  const buf = await blob.arrayBuffer()
-
-  if (type === 'docx') {
-    const mammoth = await loadScript(
-      'https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js',
-      'mammoth'
-    )
-    const result = await mammoth.convertToHtml({ arrayBuffer: buf })
-    return `
-      <style>
-        body { font-family: Arial, sans-serif; font-size: 12px; padding: 24px; color: #1a1a1a; }
-        table { border-collapse: collapse; width: 100%; margin: 8px 0; }
-        td, th { border: 1px solid #ccc; padding: 4px 8px; }
-        p { margin: 4px 0; line-height: 1.5; }
-        h1,h2,h3 { margin: 12px 0 4px; }
-        strong { font-weight: bold; }
-      </style>
-      ${result.value}
-    `
-  } else {
-    const XLSX = await loadScript(
-      'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js',
-      'XLSX'
-    )
-    const wb = XLSX.read(buf, { type: 'array' })
-    const sheets = wb.SheetNames
-    const tabsHtml = sheets.map((name: string, i: number) => {
-      const html = XLSX.utils.sheet_to_html(wb.Sheets[name], { id: `sheet${i}` })
-      return { name, html }
-    })
-    const tabButtons = sheets.map((name: string, i: number) =>
-      `<button onclick="showTab(${i})" id="tab${i}"
-        style="padding:4px 12px;margin-right:4px;border:1px solid #ccc;border-radius:4px;
-               background:${i===0?'#1a1a1a':'#f5f5f5'};color:${i===0?'#fff':'#333'};
-               cursor:pointer;font-size:11px;font-family:inherit">${name}</button>`
-    ).join('')
-    const tabContent = tabsHtml.map(({ name, html }: any, i: number) =>
-      `<div id="tabContent${i}" style="display:${i===0?'block':'none'}">${html}</div>`
-    ).join('')
-    return `
-      <style>
-        body { font-family: Arial, sans-serif; font-size: 11px; padding: 12px; color: #1a1a1a; }
-        table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-        td, th { border: 1px solid #d1d5db; padding: 3px 8px; white-space: nowrap; }
-        th { background: #374151; color: #fff; font-weight: 600; position: sticky; top: 0; }
-        tr:nth-child(even) { background: #f9fafb; }
-        tr:hover { background: #eff6ff; }
-      </style>
-      <div style="position:sticky;top:0;background:#fff;padding:8px 0 4px;border-bottom:1px solid #e5e7eb;z-index:10">
-        ${tabButtons}
-      </div>
-      ${tabContent}
-      <script>
-        function showTab(i) {
-          const n = ${sheets.length};
-          for(let j=0;j<n;j++){
-            document.getElementById('tabContent'+j).style.display = j===i?'block':'none';
-            const btn = document.getElementById('tab'+j);
-            btn.style.background = j===i?'#1a1a1a':'#f5f5f5';
-            btn.style.color = j===i?'#fff':'#333';
-          }
-        }
-      </script>
-    `
-  }
 }
 
 // ── Composant Preview ────────────────────────────────────────────────
 
 function PreviewPanel({
-  livrable, onClose, onPrev, onNext, hasPrev, hasNext,
-  onGenerate,
+  livrable, onClose, onPrev, onNext, hasPrev, hasNext, onGenerate,
 }: {
-  livrable: Livrable
-  onClose: () => void
-  onPrev: () => void
-  onNext: () => void
-  hasPrev: boolean
-  hasNext: boolean
+  livrable: Livrable; onClose: () => void
+  onPrev: () => void; onNext: () => void
+  hasPrev: boolean; hasNext: boolean
   onGenerate: (l: Livrable) => Promise<void>
 }) {
-  const [html, setHtml]       = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [loading, setLoading]     = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError]         = useState('')
+  const [rendered, setRendered]   = useState(false)
 
-  const loadPreview = async (l: Livrable) => {
-    if (!l.blob) return
-    setLoading(true)
-    setError('')
-    setHtml('')
+  const render = useCallback(async (l: Livrable) => {
+    if (!l.blob || !containerRef.current) return
+    setLoading(true); setError(''); setRendered(false)
+    const container = containerRef.current
+    container.innerHTML = ''
+
     try {
-      const h = await blobToPreviewHtml(l.blob, l.type)
-      setHtml(h)
+      const buf = await l.blob.arrayBuffer()
+
+      if (l.type === 'docx') {
+        // docx-preview : rendu fidèle Word avec mise en page
+        await loadAsset('link',
+          'https://cdn.jsdelivr.net/npm/docx-preview@0.1.28/dist/docx-preview.min.css')
+        const lib = await loadAsset('script',
+          'https://cdn.jsdelivr.net/npm/docx-preview@0.1.28/dist/docx-preview.umd.min.js',
+          'docx')
+        if (!lib?.renderAsync) throw new Error('docx-preview non chargé')
+        await lib.renderAsync(buf, container, container, {
+          className: 'docx-preview',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+        })
+
+      } else {
+        // SheetJS parse + x-spreadsheet rendu
+        const XLSX = await loadAsset('script',
+          'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js', 'XLSX')
+        await loadAsset('link',
+          'https://cdn.jsdelivr.net/npm/x-data-spreadsheet@1.1.9/dist/xspreadsheet.css')
+        const Spreadsheet = await loadAsset('script',
+          'https://cdn.jsdelivr.net/npm/x-data-spreadsheet@1.1.9/dist/xspreadsheet.js',
+          'Spreadsheet')
+
+        const wb = XLSX.read(buf, { type: 'array' })
+
+        // Convertir SheetJS → format x-spreadsheet
+        const stox = (wb: any) => wb.SheetNames.map((name: string) => {
+          const ws = wb.Sheets[name]
+          const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } }
+          const rows: any = {}
+          for (let r = ref.s.r; r <= ref.e.r; r++) {
+            const cells: any = {}
+            for (let c = ref.s.c; c <= ref.e.c; c++) {
+              const addr = XLSX.utils.encode_cell({ r, c })
+              const cell = ws[addr]
+              if (!cell) continue
+              cells[c] = { text: cell.w ?? String(cell.v ?? '') }
+            }
+            if (Object.keys(cells).length) rows[r] = { cells }
+          }
+          return { name, rows }
+        })
+
+        container.style.height = '100%'
+        const xs = new (Spreadsheet as any)(container, {
+          mode: 'read',
+          showToolbar: false,
+          showContextmenu: false,
+          view: { height: () => container.clientHeight, width: () => container.clientWidth },
+          row: { len: 200, height: 22 },
+          col: { len: 30, width: 100, indexWidth: 40, minWidth: 40 },
+        })
+        xs.loadData(stox(wb))
+      }
+
+      setRendered(true)
     } catch (e: any) {
-      setError(`Erreur de prévisualisation : ${e.message}`)
+      setError(`Erreur de prévisualisation : ${e.message ?? e}`)
     }
     setLoading(false)
-  }
+  }, [])
 
   useEffect(() => {
-    if (livrable.status === 'done' && livrable.blob) {
-      loadPreview(livrable)
-    } else {
-      setHtml('')
-      setError('')
-    }
+    if (livrable.status === 'done' && livrable.blob) render(livrable)
+    else { setRendered(false); setError('') }
   }, [livrable.id, livrable.blob])
 
   const handleGenerate = async () => {
-    setLoading(true)
+    setGenerating(true)
     await onGenerate(livrable)
-    setLoading(false)
+    setGenerating(false)
   }
 
   const Icon = livrable.icon
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
       <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div className="w-[60rem] max-w-[92vw] bg-white flex flex-col shadow-2xl">
 
-      {/* Drawer */}
-      <div className="w-[56rem] max-w-[90vw] bg-white flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -200,61 +193,61 @@ function PreviewPanel({
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
             {livrable.status === 'done' && livrable.blob && (
-              <button
-                onClick={() => livrable.blob && triggerDownload(livrable.blob, livrable.filename ?? livrable.label)}
+              <button onClick={() => livrable.blob && triggerDownload(livrable.blob, livrable.filename ?? livrable.label)}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-stone-200 rounded-lg hover:bg-stone-50 transition-colors">
                 <Download size={11} /> Télécharger
               </button>
             )}
-            <button onClick={onPrev} disabled={!hasPrev}
-              className="p-1.5 rounded hover:bg-stone-100 disabled:opacity-30 transition-colors">
-              <ChevronLeft size={14} />
-            </button>
-            <button onClick={onNext} disabled={!hasNext}
-              className="p-1.5 rounded hover:bg-stone-100 disabled:opacity-30 transition-colors">
-              <ChevronRight size={14} />
-            </button>
-            <button onClick={onClose}
-              className="p-1.5 rounded hover:bg-stone-100 transition-colors ml-1">
-              <X size={14} />
-            </button>
+            <button onClick={onPrev} disabled={!hasPrev} className="p-1.5 rounded hover:bg-stone-100 disabled:opacity-30"><ChevronLeft size={14} /></button>
+            <button onClick={onNext} disabled={!hasNext} className="p-1.5 rounded hover:bg-stone-100 disabled:opacity-30"><ChevronRight size={14} /></button>
+            <button onClick={onClose} className="p-1.5 rounded hover:bg-stone-100 ml-1"><X size={14} /></button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-hidden relative">
-          {livrable.status !== 'done' ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-8">
+        <div className="flex-1 overflow-hidden relative bg-stone-100">
+          {/* Prompt generation si pas encore généré */}
+          {livrable.status !== 'done' && !loading && (
+            <div className="flex flex-col items-center justify-center h-full gap-4">
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${livrable.type === 'docx' ? 'bg-blue-50' : 'bg-emerald-50'}`}>
                 <Icon size={22} className={livrable.type === 'docx' ? 'text-blue-400' : 'text-emerald-400'} />
               </div>
-              <div>
+              <div className="text-center">
                 <div className="text-sm font-medium text-stone-700">Document non encore généré</div>
                 <div className="text-xs text-stone-400 mt-1">{livrable.description}</div>
               </div>
-              <button onClick={handleGenerate} disabled={loading}
-                className="flex items-center gap-1.5 px-4 py-2 bg-stone-900 text-white text-xs rounded-lg hover:opacity-85 disabled:opacity-50 transition-all">
-                {loading ? <><Loader2 size={12} className="animate-spin" /> Génération…</> : 'Générer et prévisualiser'}
+              <button onClick={handleGenerate} disabled={generating}
+                className="flex items-center gap-1.5 px-4 py-2 bg-stone-900 text-white text-xs rounded-lg hover:opacity-85 disabled:opacity-50">
+                {generating ? <><Loader2 size={12} className="animate-spin" /> Génération…</> : 'Générer et prévisualiser'}
               </button>
             </div>
-          ) : loading ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3">
-              <Loader2 size={20} className="animate-spin text-stone-400" />
-              <div className="text-xs text-stone-400">Chargement de la prévisualisation…</div>
+          )}
+
+          {/* Loader */}
+          {(loading || generating) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stone-100">
+              <Loader2 size={22} className="animate-spin text-stone-400" />
+              <div className="text-xs text-stone-400">{generating ? 'Génération du document…' : 'Chargement de la prévisualisation…'}</div>
             </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
+          )}
+
+          {/* Erreur */}
+          {error && !loading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8">
               <AlertCircle size={20} className="text-red-400" />
               <div className="text-xs text-red-600 text-center">{error}</div>
             </div>
-          ) : (
-            <iframe
-              srcDoc={html}
-              className="w-full h-full border-0"
-              sandbox="allow-scripts allow-same-origin"
-              title={livrable.label}
-            />
           )}
+
+          {/* Container de rendu — docx-preview ou x-spreadsheet */}
+          <div
+            ref={containerRef}
+            className="h-full overflow-auto"
+            style={{
+              display: rendered ? 'block' : 'none',
+              background: livrable.type === 'docx' ? '#e5e7eb' : '#fff',
+            }}
+          />
         </div>
       </div>
     </div>
