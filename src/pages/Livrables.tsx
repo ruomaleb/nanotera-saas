@@ -47,30 +47,44 @@ const DESCRIPTIONS: Record<string, (op: any) => string> = {
 }
 
 // ── Imports statiques — pas de CDN ────────────────────────────────
-// npm install docx-preview xlsx x-data-spreadsheet
+// npm install docx-preview xlsx
 import { renderAsync } from 'docx-preview'
 import * as XLSX from 'xlsx'
-import Spreadsheet from 'x-data-spreadsheet'
-import 'x-data-spreadsheet/dist/xspreadsheet.css'
 
-// Convertit un workbook SheetJS au format x-spreadsheet
-function stox(wb: XLSX.WorkBook) {
-  return wb.SheetNames.map(name => {
-    const ws = wb.Sheets[name]
-    const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } }
-    const rows: any = {}
-    for (let r = ref.s.r; r <= ref.e.r; r++) {
-      const cells: any = {}
-      for (let cc = ref.s.c; cc <= ref.e.c; cc++) {
-        const addr = XLSX.utils.encode_cell({ r, c: cc })
-        const cell = ws[addr]
-        if (!cell) continue
-        cells[cc] = { text: cell.w ?? String(cell.v ?? '') }
-      }
-      if (Object.keys(cells).length) rows[r] = { cells }
+// Rendu xlsx → HTML avec tabs par feuille
+function xlsxToHtml(wb: XLSX.WorkBook): string {
+  const sheets = wb.SheetNames
+  const tabs = sheets.map((n, i) =>
+    `<button onclick="show(${i})" id="t${i}" style="padding:4px 14px;margin-right:2px;
+      border:1px solid #d1d5db;border-radius:4px 4px 0 0;cursor:pointer;font-size:11px;
+      font-family:inherit;background:${i===0?'#1e293b':'#f8fafc'};
+      color:${i===0?'#fff':'#475569'};border-bottom:${i===0?'1px solid #1e293b':'none'}">${n}</button>`
+  ).join('')
+  const bodies = sheets.map((n, i) => {
+    const html = XLSX.utils.sheet_to_html(wb.Sheets[n])
+    return `<div id="s${i}" style="display:${i===0?'block':'none'}">${html}</div>`
+  }).join('')
+  return `<!DOCTYPE html><html><head><style>
+    body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:0;background:#fff}
+    .tabs{padding:8px 8px 0;background:#f1f5f9;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:10}
+    .content{overflow:auto;padding:0}
+    table{border-collapse:collapse;width:100%}
+    td,th{border:1px solid #e2e8f0;padding:2px 8px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+    th{background:#1e293b;color:#fff;font-weight:600;position:sticky;top:0}
+    tr:nth-child(even) td{background:#f8fafc}
+    tr:hover td{background:#dbeafe}
+  </style></head><body>
+  <div class="tabs">${tabs}</div>
+  <div class="content">${bodies}</div>
+  <script>function show(i){const n=${sheets.length};
+    for(let j=0;j<n;j++){
+      document.getElementById('s'+j).style.display=j===i?'block':'none';
+      const t=document.getElementById('t'+j);
+      t.style.background=j===i?'#1e293b':'#f8fafc';
+      t.style.color=j===i?'#fff':'#475569';
+      t.style.borderBottom=j===i?'1px solid #1e293b':'none';
     }
-    return { name, rows }
-  })
+  }</script></body></html>`
 }
 
 // ── Composant Preview ────────────────────────────────────────────────
@@ -112,16 +126,14 @@ function PreviewPanel({
         })
       } else {
         const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
-        container.style.height = '100%'
-        const xs = new (Spreadsheet as any)(container, {
-          mode: 'read',
-          showToolbar: false,
-          showContextmenu: false,
-          view: { height: () => container.clientHeight, width: () => container.clientWidth },
-          row: { len: 200, height: 22 },
-          col: { len: 30, width: 100, indexWidth: 40, minWidth: 40 },
-        })
-        xs.loadData(stox(wb))
+        const html = xlsxToHtml(wb)
+        // Utiliser un iframe srcdoc pour isoler les styles du tableau
+        const iframe = document.createElement('iframe')
+        iframe.style.cssText = 'width:100%;height:100%;border:0'
+        iframe.sandbox.add('allow-scripts')
+        container.appendChild(iframe)
+        // srcdoc via setAttribute pour compatibilité maximale
+        iframe.setAttribute('srcdoc', html)
       }
 
       setRendered(true)
