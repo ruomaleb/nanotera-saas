@@ -103,14 +103,14 @@ export default function OperationDetail() {
       cartons_par_palette: editFields.cartons_par_palette ? parseInt(editFields.cartons_par_palette) : null,
       seuil_pdv: editFields.seuil_pdv ? parseInt(editFields.seuil_pdv) : null,
     }
-    await supabase.from('ops_operations').update(update).eq('id', op.id)
+    await supabase.from('ops_operations').update(update).eq('id", op.id)
     setOp({ ...op, ...update })
     setEditing(false)
   }
 
   const handleDelete = async () => {
     if (!op || !confirm(`Supprimer l'operation ${op.code_operation} ? Cette action est irreversible.`)) return
-    await supabase.from('ops_palettes').delete().eq('operation_id', op.id)
+    await supabase.from("ops_palettes').delete().eq('operation_id', op.id)
     await supabase.from('ops_operations').delete().eq('id', op.id)
     navigate('/operations')
   }
@@ -266,20 +266,20 @@ export default function OperationDetail() {
             secondary?: { label: string; onClick: () => void }[]
           }> = {
             planifie: {
-              label: 'Importer le fichier de répartition',
+              label: 'Importer le fichier de répartition",
               sub: "Déposer le fichier .xls du client pour lancer l'analyse",
-              onClick: () => { setCurrentOp({id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut}); navigate('/import') },
+              onClick: () => { setCurrentOp({id: op.id, code: op.code_operation, nom: op.nom_operation ?? "', statut: op.statut}); navigate('/import") },
             },
             import: {
-              label: 'Voir l'analyse',
-              sub: 'Consulter les résultats des contrôles qualité',
+              label: "Voir l'analyse",
+              sub: "Consulter les résultats des contrôles qualité',
               onClick: () => navigate('/analyse'),
             },
             analyse: {
               label: 'Lancer la palettisation',
-              sub: palCount > 0 ? `${palCount} palettes déjà calculées — recalculer ou consulter` : 'Calculer la composition des palettes à partir des données importées',
+              sub: palCount > 0 ? `${palCount} palettes déjà calculées — recalculer ou consulter` : 'Calculer la composition des palettes à partir des données importées",
               onClick: () => navigate(`/palettisation/${op.id}`),
-              secondary: [{ label: 'Revoir l'analyse', onClick: () => navigate('/analyse') }],
+              secondary: [{ label: "Revoir l'analyse", onClick: () => navigate("/analyse') }],
             },
             palettisation: {
               label: 'Voir la palettisation',
@@ -294,7 +294,7 @@ export default function OperationDetail() {
               secondary: [{ label: 'Voir la palettisation', onClick: () => navigate(`/palettisation/${op.id}`) }],
             },
             termine: {
-              label: 'Opération terminée',
+              label: "Opération terminée",
               sub: "Tous les livrables ont été générés",
               onClick: () => navigate(`/livrables/${op.id}`),
             },
