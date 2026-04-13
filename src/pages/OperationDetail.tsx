@@ -108,13 +108,6 @@ export default function OperationDetail() {
     setEditing(false)
   }
 
-  const handleUpdateStatut = async (newStatut: string) => {
-    if (!op) return
-    await supabase.from('ops_operations').update({ statut: newStatut }).eq('id', op.id)
-    setOp({ ...op, statut: newStatut as Operation['statut'] })
-    setEditing(false)
-  }
-
   const handleDelete = async () => {
     if (!op || !confirm(`Supprimer l'operation ${op.code_operation} ? Cette action est irreversible.`)) return
     await supabase.from('ops_palettes').delete().eq('operation_id', op.id)
@@ -157,29 +150,7 @@ export default function OperationDetail() {
       </div>
 
       <div className="max-w-4xl mx-auto px-5 py-6">
-        {/* Progress bar */}
-        <div className="mb-6">
-          <div className="flex items-center gap-0">
-            {STATUT_FLOW.map((s, i) => {
-              const done = i <= stepIndex
-              const current = i === stepIndex
-              return (
-                <div key={s} className="flex items-center flex-1">
-                  <button
-                    onClick={() => handleUpdateStatut(s)}
-                    className={`flex-1 py-1.5 text-[10px] font-medium text-center border-b-2 transition-colors ${
-                      current ? 'border-indigo-500 text-indigo-700 bg-indigo-50' :
-                      done ? 'border-indigo-300 text-indigo-500' :
-                      'border-gray-200 text-gray-400 hover:text-gray-500 hover:border-gray-300'
-                    }`}
-                  >
-                    {STATUT_LABELS[s]}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+
 
         {/* Stats */}
         <div className="grid grid-cols-5 gap-3 mb-6">
