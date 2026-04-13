@@ -249,14 +249,26 @@ export default function Palettisation() {
           nb_pdv: op.nb_palettes_pdv ?? 0,
           cartons_par_palette: op.cartons_par_palette ?? 48,
           poids_max: 750,
-          resume_par_centrale: Object.entries(grouped).map(([nom, pals]) => ({
-            centrale: nom,
-            nb_palettes: pals.length,
-            nb_grp: pals.filter(p => p.type_palette === 'groupee').length,
-            nb_pdv: pals.filter(p => p.type_palette === 'pdv').length,
-            poids_total: Math.round(pals.reduce((s, p) => s + p.poids_kg, 0)),
-            taux_min: Math.min(...pals.filter(p=>p.taux_remplissage).map(p => p.taux_remplissage ?? 1)),
-          })),
+          resume_par_centrale: Object.entries(grouped).map(([nom, pals]) => {
+            const crtMax = op.cartons_par_palette ?? 48
+            const grpPals = pals.filter(p => p.type_palette === 'groupee')
+            // Calculer taux depuis nb_cartons si taux_remplissage pas stocké
+            const taux = grpPals.map(p => {
+              if (p.taux_remplissage != null) return p.taux_remplissage
+              if (p.nb_cartons != null) return p.nb_cartons / crtMax
+              return null
+            }).filter(t => t != null) as number[]
+            return {
+              centrale: nom,
+              nb_palettes: pals.length,
+              nb_grp: grpPals.length,
+              nb_pdv: pals.filter(p => p.type_palette === 'pdv').length,
+              poids_total: Math.round(pals.reduce((s, p) => s + p.poids_kg, 0)),
+              taux_min: taux.length > 0 ? Math.round(Math.min(...taux) * 100) : null,
+              taux_moy: taux.length > 0 ? Math.round(taux.reduce((a,b)=>a+b,0)/taux.length * 100) : null,
+              nb_cartons_total: grpPals.reduce((s, p) => s + (p.nb_cartons ?? 0), 0),
+            }
+          }),
         }),
       })
       const data = await resp.json()
