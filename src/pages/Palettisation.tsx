@@ -4,8 +4,6 @@ import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil, ChevronDown, ChevronRight, RefreshCw, FileOutput, Sparkles } from 'lucide-react'
 import PaletteEditor from '../components/PaletteEditor'
-import PaletteAlerts from '../components/PaletteAlerts'
-import AutoParams, { ParamsValues } from '../components/AutoParams'
 
 // ── Carte palette avec toggle détail magasins ─────────────────
 
@@ -396,9 +394,22 @@ export default function Palettisation() {
           </div>
         </div>
 
+      ) : mode === 'edit' ? (
+
+        /* ── Mode éditeur ── */
+        <div className="max-w-5xl mx-auto px-5 py-6">
+          <PaletteEditor
+            operationId={op.id}
+            rawPalettes={palettes}
+            conditionnement={conditionnement}
+            onSaved={loadPalettes}
+            onDone={() => setMode('view')}
+          />
+        </div>
+
       ) : (
 
-        /* ── Vue + Édition (même conteneur) ── */
+        /* ── Mode vue ── */
         <div className="max-w-5xl mx-auto px-5 py-6 space-y-5">
 
           {/* Stats */}
@@ -423,10 +434,6 @@ export default function Palettisation() {
               </div>
             </div>
           </div>
-          <PaletteAlerts
-            operationId={op.id}
-            onRelancer={handleRunBinpacking}
-          />
 
           {error && (
             <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
@@ -436,29 +443,16 @@ export default function Palettisation() {
 
           {/* Actions */}
           <div className="grid grid-cols-4 gap-3">
-            {mode === 'edit' ? (
-              <button
-                onClick={() => setMode('view')}
-                className="flex flex-col items-start gap-2 p-4 border border-stone-900 rounded-xl bg-stone-900 hover:opacity-85 transition-all text-left"
-              >
-                <Pencil size={16} className="text-white opacity-70" />
-                <div>
-                  <div className="text-sm font-medium text-white">Terminer l'édition</div>
-                  <div className="text-xs text-white opacity-50 mt-0.5">Revenir à la vue</div>
-                </div>
-              </button>
-            ) : (
-              <button
-                onClick={() => setMode('edit')}
-                className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
-              >
-                <Pencil size={16} className="text-stone-400" />
-                <div>
-                  <div className="text-sm font-medium text-stone-800">Éditer les palettes</div>
-                  <div className="text-xs text-stone-400 mt-0.5">Déplacer des magasins, fusionner</div>
-                </div>
-              </button>
-            )}
+            <button
+              onClick={() => setMode('edit')}
+              className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
+            >
+              <Pencil size={16} className="text-stone-400" />
+              <div>
+                <div className="text-sm font-medium text-stone-800">Éditer les palettes</div>
+                <div className="text-xs text-stone-400 mt-0.5">Déplacer des magasins, fusionner</div>
+              </div>
+            </button>
 
             <button
               onClick={() => { setShowAiPanel(p => !p); if (!showAiPanel && aiRecos.length === 0) handleAiAnalyse() }}
@@ -546,17 +540,7 @@ export default function Palettisation() {
             </div>
           )}
 
-          {/* Contenu conditionnel : éditeur ou liste */}
-          {mode === 'edit' ? (
-            <PaletteEditor
-              operationId={op.id}
-              rawPalettes={palettes}
-              conditionnement={conditionnement}
-              onSaved={loadPalettes}
-              onDone={() => setMode('view')}
-            />
-          ) : (
-          <div className="space-y-4">
+          {/* Groupes par centrale */}
           {Object.entries(grouped).map(([centrale, pals]) => {
             const isExpanded = expandedCentrales.has(centrale)
             const totalEx    = pals.reduce((s, p) => s + p.nb_exemplaires, 0)
@@ -618,17 +602,6 @@ export default function Palettisation() {
             )
           })}
 
-          {/* Suivant */}
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={() => navigate('/livrables')}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              Générer les livrables <ArrowRight size={14} />
-            </button>
-          </div>
-        </div>
-          )}
         </div>
       )}
     </div>
