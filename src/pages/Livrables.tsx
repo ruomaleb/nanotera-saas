@@ -47,45 +47,13 @@ const DESCRIPTIONS: Record<string, (op: any) => string> = {
 }
 
 // ── Imports statiques — pas de CDN ────────────────────────────────
-// npm install docx-preview xlsx
+// npm install docx-preview luckyexcel @fortune-sheet/react
 import { renderAsync } from 'docx-preview'
-import * as XLSX from 'xlsx'
+import { transformExcelToLucky } from 'luckyexcel'
+import { Workbook } from '@fortune-sheet/react'
+import '@fortune-sheet/react/dist/index.css'
 
-// Rendu xlsx → HTML avec tabs par feuille
-function xlsxToHtml(wb: XLSX.WorkBook): string {
-  const sheets = wb.SheetNames
-  const tabs = sheets.map((n, i) =>
-    `<button onclick="show(${i})" id="t${i}" style="padding:4px 14px;margin-right:2px;
-      border:1px solid #d1d5db;border-radius:4px 4px 0 0;cursor:pointer;font-size:11px;
-      font-family:inherit;background:${i===0?'#1e293b':'#f8fafc'};
-      color:${i===0?'#fff':'#475569'};border-bottom:${i===0?'1px solid #1e293b':'none'}">${n}</button>`
-  ).join('')
-  const bodies = sheets.map((n, i) => {
-    const html = XLSX.utils.sheet_to_html(wb.Sheets[n])
-    return `<div id="s${i}" style="display:${i===0?'block':'none'}">${html}</div>`
-  }).join('')
-  return `<!DOCTYPE html><html><head><style>
-    body{font-family:Arial,sans-serif;font-size:11px;margin:0;padding:0;background:#fff}
-    .tabs{padding:8px 8px 0;background:#f1f5f9;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:10}
-    .content{overflow:auto;padding:0}
-    table{border-collapse:collapse;width:100%}
-    td,th{border:1px solid #e2e8f0;padding:2px 8px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
-    th{background:#1e293b;color:#fff;font-weight:600;position:sticky;top:0}
-    tr:nth-child(even) td{background:#f8fafc}
-    tr:hover td{background:#dbeafe}
-  </style></head><body>
-  <div class="tabs">${tabs}</div>
-  <div class="content">${bodies}</div>
-  <script>function show(i){const n=${sheets.length};
-    for(let j=0;j<n;j++){
-      document.getElementById('s'+j).style.display=j===i?'block':'none';
-      const t=document.getElementById('t'+j);
-      t.style.background=j===i?'#1e293b':'#f8fafc';
-      t.style.color=j===i?'#fff':'#475569';
-      t.style.borderBottom=j===i?'1px solid #1e293b':'none';
-    }
-  }</script></body></html>`
-}
+
 
 // ── Composant Preview ────────────────────────────────────────────────
 
@@ -98,6 +66,7 @@ function PreviewPanel({
   onGenerate: (l: Livrable) => Promise<void>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [xlsxSheets, setXlsxSheets] = useState<any[]>([])
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError]         = useState('')
@@ -125,15 +94,18 @@ function PreviewPanel({
           renderFootnotes: true,
         })
       } else {
-        const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
-        const html = xlsxToHtml(wb)
-        // Utiliser un iframe srcdoc pour isoler les styles du tableau
-        const iframe = document.createElement('iframe')
-        iframe.style.cssText = 'width:100%;height:100%;border:0'
-        iframe.sandbox.add('allow-scripts')
-        container.appendChild(iframe)
-        // srcdoc via setAttribute pour compatibilité maximale
-        iframe.setAttribute('srcdoc', html)
+        // luckyexcel convertit l'ArrayBuffer en format fortune-sheet
+        const result = await new Promise<any[]>((resolve, reject) => {
+          transformExcelToLucky(
+            new File([buf], 'preview.xlsx'),
+            (exportJson: any) => {
+              if (exportJson.sheets) resolve(exportJson.sheets)
+              else reject(new Error('Format non supporté'))
+            },
+            (err: any) => reject(err)
+          )
+        })
+        setXlsxSheets(result)
       }
 
       setRendered(true)
@@ -144,6 +116,7 @@ function PreviewPanel({
   }, [])
 
   useEffect(() => {
+    setXlsxSheets([])
     if (livrable.status === 'done' && livrable.blob) render(livrable)
     else { setRendered(false); setError('') }
   }, [livrable.id, livrable.blob])
@@ -218,15 +191,33 @@ function PreviewPanel({
             </div>
           )}
 
-          {/* Container de rendu — docx-preview ou x-spreadsheet */}
-          <div
-            ref={containerRef}
-            className="h-full overflow-auto"
-            style={{
-              display: rendered ? 'block' : 'none',
-              background: livrable.type === 'docx' ? '#e5e7eb' : '#fff',
-            }}
-          />
+          {/* Rendu docx — docx-preview dans un div */}
+          {rendered && livrable.type === 'docx' && (
+            <div
+              ref={containerRef}
+              className="h-full overflow-auto"
+              style={{ background: '#e5e7eb' }}
+            />
+          )}
+
+          {/* Rendu xlsx — Fortune Sheet (Excel-like) */}
+          {xlsxSheets.length > 0 && livrable.type === 'xlsx' && (
+            <div style={{ height: '100%', width: '100%' }}>
+              <Workbook
+                data={xlsxSheets}
+                showToolbar={false}
+                showFormulaBar={false}
+                showSheetTabs={true}
+                scrollX={0}
+                scrollY={0}
+              />
+            </div>
+          )}
+
+          {/* Fallback container pour docx (toujours dans le DOM pour renderAsync) */}
+          {livrable.type === 'docx' && !rendered && (
+            <div ref={containerRef} style={{ display: 'none' }} />
+          )}
         </div>
       </div>
     </div>
