@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { CheckCircle2, AlertTriangle, XCircle, ArrowRight, FileSpreadsheet, ChevronDown, ChevronRight, Settings, RefreshCw } from 'lucide-react'
+import {
+  CheckCircle2, AlertTriangle, XCircle, ArrowRight, FileSpreadsheet,
+  ChevronDown, ChevronRight, RefreshCw, Sparkles, Send, Loader2, Info,
+} from 'lucide-react'
 import { useOpContext } from '../components/Layout'
-import type { Operation } from '../types/database'
+import { useModel } from '../hooks/useModel'
+
+// ── Types ──────────────────────────────────────────────────
 
 interface QualityCheck {
   name: string
@@ -11,72 +16,290 @@ interface QualityCheck {
   message?: string
   nb_issues?: number
   issues?: any[]
+  // Champs bruts selon le check
+  [key: string]: any
 }
 
-interface QualityReport {
-  status?: string
-  verdict?: string
-  summary?: any
-  checks?: any
+// ── Helpers ────────────────────────────────────────────────
+
+const CHECK_META: Record<string, {
+  label: string
+  impact: 'bloquant' | 'attention' | 'informatif'
+  explain: (data: any) => string
+}> = {
+  '1_integrite': {
+    label: 'Intégrité des données',
+    impact: 'bloquant',
+    explain: d => d?.nb_total
+      ? `${d.nb_valid ?? d.nb_total}/${d.nb_total} magasins valides.${d.errors?.length ? ` ${d.errors.length} erreur(s) détectée(s).` : ' Aucun doublon, aucun champ manquant.'}`
+      : 'Structure des données vérifiée.',
+  },
+  '2_coherence_totaux': {
+    label: 'Cohérence des totaux',
+    impact: 'attention',
+    explain: d => {
+      if (d?.ecart && Math.abs(d.ecart) > 0)
+        return `Écart de ${Math.abs(d.ecart).toLocaleString('fr-FR')} ex entre le total source (${(d.total_source ?? 0).toLocaleString('fr-FR')}) et le total calculé (${(d.total_calcule ?? 0).toLocaleString('fr-FR')}). Cet écart correspond souvent aux justificatifs Galec — vérifier.`
+      return 'Totaux cohérents entre le fichier source et les données normalisées.'
+    },
+  },
+  '3_anomalies_statistiques': {
+    label: 'PDV potentiels & anomalies',
+    impact: 'attention',
+    explain: d => {
+      const n = d?.anomalies?.length ?? d?.warnings?.length ?? 0
+      return n > 0
+        ? `${n} magasin(s) avec quantité supérieure au seuil PDV — ils recevront une palette individuelle.`
+        : 'Aucune anomalie statistique détectée.'
+    },
+  },
+  '4_observations': {
+    label: 'Observations spéciales',
+    impact: 'informatif',
+    explain: d => {
+      const n = d?.nb_parsed ?? d?.observations?.length ?? 0
+      return n > 0
+        ? `${n} magasin(s) ont des instructions spéciales (exclusions d'offres, bandeau, repiquage). Transmises aux fiches palettes.`
+        : 'Aucune observation particulière détectée.'
+    },
+  },
+  '5_completude_adresses': {
+    label: 'Complétude des adresses',
+    impact: 'attention',
+    explain: d => d?.nb_incomplets
+      ? `${d.nb_incomplets} adresse(s) incomplète(s) (${d.taux_completude_pct}% de complétude). Impact sur les bons de livraison.`
+      : `Toutes les adresses sont complètes (${d?.taux_completude_pct ?? 100}%).`,
+  },
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pass: 'OK',
-  ok: 'OK',
-  warn: 'Avertissement',
-  warning: 'Avertissement',
-  fail: 'Echec',
-  error: 'Echec',
+const IMPACT_CONFIG = {
+  bloquant:   { bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-800',    badge: 'bg-red-50 text-red-700 border-red-200',    icon: XCircle,       dot: 'bg-red-500'    },
+  attention:  { bg: 'bg-amber-50',  border: 'border-amber-200',  text: 'text-amber-800',  badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: AlertTriangle, dot: 'bg-amber-500'  },
+  informatif: { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-800',   badge: 'bg-blue-50 text-blue-700 border-blue-200',   icon: Info,          dot: 'bg-blue-400'   },
+  ok:         { bg: 'bg-stone-50',  border: 'border-stone-200',  text: 'text-stone-700',  badge: 'bg-green-50 text-green-700 border-green-200',  icon: CheckCircle2, dot: 'bg-green-500'  },
 }
 
-const VERDICT_STYLES: Record<string, string> = {
-  pass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  warn: 'bg-amber-50 text-amber-700 border-amber-200',
-  warning: 'bg-amber-50 text-amber-700 border-amber-200',
-  fail: 'bg-red-50 text-red-700 border-red-200',
-  error: 'bg-red-50 text-red-700 border-red-200',
+function IssueRow({ issue, index }: { issue: any; index: number }) {
+  if (typeof issue === 'string') return (
+    <div className="flex items-start gap-2 py-2 border-b border-stone-100 last:border-0 text-xs">
+      <span className="text-stone-400 w-5 flex-shrink-0">{index + 1}</span>
+      <span className="text-stone-700">{issue}</span>
+    </div>
+  )
+  const code  = issue.code_pdv || issue.code
+  const nom   = issue.nom_pdv  || issue.nom
+  const qte   = issue.quantite ?? issue.qty
+  const note  = issue.note || issue.message || issue.detail
+  const type  = issue.type
+  return (
+    <div className="flex items-center gap-2 py-2.5 border-b border-stone-100 last:border-0 text-xs">
+      <span className="text-stone-300 w-5 flex-shrink-0 font-mono">{index + 1}</span>
+      {code && <span className="font-mono bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded text-[10px] flex-shrink-0">{code}</span>}
+      <span className="flex-1 font-medium text-stone-800 truncate">{nom || note || type || '—'}</span>
+      {qte !== undefined && (
+        <span className="font-mono font-medium text-amber-700 flex-shrink-0">{Number(qte).toLocaleString('fr-FR')} ex</span>
+      )}
+    </div>
+  )
 }
 
-const CHECK_LABELS: Record<string, string> = {
-  '1_integrite': 'Integrite des donnees',
-  '2_coherence_totaux': 'Coherence des totaux',
-  '3_anomalies_statistiques': 'Anomalies statistiques',
-  '4_observations': 'Observations parsees',
-  '5_completude_adresses': 'Completude des adresses',
+// ── Chat IA ────────────────────────────────────────────────
+
+const QUICK_QUESTIONS = [
+  'Puis-je lancer la palettisation tels quels ?',
+  'Combien de palettes vais-je obtenir environ ?',
+  'Les PDV sont-ils bien identifiés ?',
+  'Quel seuil PDV me recommandes-tu ?',
+  'Y a-t-il des anomalies bloquantes ?',
+]
+
+interface ChatMsg { role: 'user' | 'assistant'; content: string }
+
+function AnalyseChat({ op }: { op: any }) {
+  const { modelId } = useModel()
+  const [messages, setMessages] = useState<ChatMsg[]>([])
+  const [input, setInput]       = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const [initialized, setInitialized] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const API_BASE = import.meta.env.VITE_API_URL || 'https://nanotera-api-saas-production.up.railway.app'
+
+  // Proactive suggestion au chargement
+  useEffect(() => {
+    if (!op || initialized) return
+    setInitialized(true)
+
+    const exPaquet = op.ex_par_paquet || 100
+    const exCarton = op.ex_par_carton || 200
+    const crtPal   = op.cartons_par_palette || 48
+    const seuilPdv = op.seuil_pdv || 2800
+    const poids    = op.poids_unitaire_kg || 0.054
+    const exPal    = exCarton * crtPal
+    const nbPalEst = op.total_exemplaires ? Math.ceil(op.total_exemplaires / exPal) : null
+    const poidsPal = Math.round(exPal * poids)
+
+    const proactive = `Voici mon analyse rapide de l'opération **${op.code_operation}** :
+
+**${(op.total_exemplaires ?? 0).toLocaleString('fr-FR')} ex** · ${op.nb_magasins ?? '?'} magasins · ${op.nb_centrales ?? '?'} centrales
+
+Avec les paramètres actuels (${exPaquet} ex/paquet · ${exCarton} ex/carton · ${crtPal} crt/palette · seuil PDV ${seuilPdv.toLocaleString('fr-FR')} ex) :
+- **${exPal.toLocaleString('fr-FR')} ex/palette** · poids estimé **${poidsPal.toLocaleString('fr-FR')} kg/palette**
+${nbPalEst ? `- Estimation : **~${nbPalEst} palettes** au total\n` : ''}- Poids/ex calculé : **${poids} kg**
+
+Tu peux me poser des questions sur les anomalies détectées, ajuster le seuil PDV, ou simuler un changement de conditionnement.`
+
+    setMessages([{ role: 'assistant', content: proactive }])
+  }, [op?.id])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, streaming])
+
+  const send = async (text: string) => {
+    if (!text.trim() || streaming) return
+    const userMsg: ChatMsg = { role: 'user', content: text }
+    setMessages(prev => [...prev, userMsg])
+    setInput('')
+    setStreaming(true)
+
+    const exPaquet = op.ex_par_paquet || 100
+    const exCarton = op.ex_par_carton || 200
+    const crtPal   = op.cartons_par_palette || 48
+    const seuilPdv = op.seuil_pdv || 2800
+    const poids    = op.poids_unitaire_kg || 0.054
+
+    const systemPrompt = `Tu es l'assistant logistique Nanotera. L'utilisateur analyse l'opération ${op.code_operation}.
+
+DONNÉES :
+- Total : ${op.total_exemplaires?.toLocaleString('fr-FR')} exemplaires · ${op.nb_magasins} magasins · ${op.nb_centrales} centrales
+- Conditionnement : ${exPaquet} ex/paquet · ${exCarton} ex/carton · ${crtPal} crt/palette · seuil PDV ${seuilPdv}
+- Poids/ex : ${poids} kg
+
+RAPPORT CONTRÔLES :
+${JSON.stringify(op.rapport_controles?.checks || {}, null, 2).slice(0, 1500)}
+
+Réponds de façon concise et pratique en français. Utilise des chiffres concrets. Propose des ajustements si pertinent.`
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content: text },
+          ],
+        }),
+      })
+
+      if (!resp.body) throw new Error('No stream')
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let accumulated = ''
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }])
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value)
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') break
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices?.[0]?.delta?.content || parsed.delta?.text || ''
+              if (delta) {
+                accumulated += delta
+                setMessages(prev => {
+                  const next = [...prev]
+                  next[next.length - 1] = { role: 'assistant', content: accumulated }
+                  return next
+                })
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (e: any) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Erreur : ${e.message}` }])
+    }
+    setStreaming(false)
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[88%] rounded-xl px-3 py-2.5 text-sm leading-relaxed whitespace-pre-line ${
+              m.role === 'user'
+                ? 'bg-stone-800 text-white rounded-br-sm'
+                : 'bg-stone-100 text-stone-800 rounded-bl-sm'
+            }`}>
+              {m.content}
+              {streaming && i === messages.length - 1 && m.role === 'assistant' && (
+                <span className="inline-block w-1 h-3 bg-stone-400 animate-pulse ml-1 align-middle" />
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Questions rapides */}
+      {messages.length <= 1 && (
+        <div className="px-4 pb-2">
+          <div className="text-[10px] text-stone-400 mb-2 uppercase tracking-wide">Questions rapides</div>
+          <div className="flex flex-col gap-1.5">
+            {QUICK_QUESTIONS.map(q => (
+              <button key={q} onClick={() => send(q)}
+                className="text-left text-xs px-3 py-2 border border-stone-200 rounded-lg hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 transition-all">
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="border-t border-stone-200 p-3 flex gap-2">
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send(input)}
+          placeholder="Poser une question sur les données..."
+          className="flex-1 text-sm px-3 py-2 border border-stone-200 rounded-lg outline-none focus:border-brand-400 font-[inherit]" />
+        <button onClick={() => send(input)} disabled={streaming || !input.trim()}
+          className="w-9 h-9 flex items-center justify-center bg-stone-900 text-white rounded-lg hover:opacity-85 disabled:opacity-30 transition-all flex-shrink-0">
+          {streaming ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+        </button>
+      </div>
+    </div>
+  )
 }
 
-function StatusIcon({ status }: { status: string }) {
-  if (status === 'pass' || status === 'ok')
-    return <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
-  if (status === 'warn' || status === 'warning')
-    return <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
-  return <XCircle size={14} className="text-red-500 flex-shrink-0" />
-}
+// ── Page principale ────────────────────────────────────────
 
 export default function Analyse() {
   const navigate = useNavigate()
   const { currentOp, setCurrentOp } = useOpContext()
   const [operations, setOperations] = useState<any[]>([])
-  const [showParamsPanel, setShowParamsPanel] = useState(false)
   const [selectedOp, setSelectedOp] = useState('')
-  const [op, setOp] = useState<any>(null)
+  const [op, setOp]       = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [expandedCheck, setExpandedCheck] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase
-      .from('ops_operations')
-      .select('id, code_operation, nom_operation, statut, nb_magasins, total_exemplaires, nb_centrales, nb_palettes, nb_palettes_grp, nb_palettes_pdv, rapport_controles, donnees_normalisees, poids_unitaire_kg, ex_par_paquet, ex_par_carton, cartons_par_palette, seuil_pdv')
-      .in('statut', ['analyse', 'palettisation', 'livrables', 'termine'])
+    supabase.from('ops_operations')
+      .select('id, code_operation, nom_operation, statut, nb_magasins, total_exemplaires, nb_centrales, nb_palettes, nb_palettes_grp, nb_palettes_pdv, rapport_controles, donnees_normalisees, poids_unitaire_kg, ex_par_paquet, ex_par_carton, cartons_par_palette, seuil_pdv, nom_fichier_import, date_import')
+      .in('statut', ['import', 'analyse', 'palettisation', 'livrables', 'termine'])
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         setOperations(data ?? [])
-        // Pré-sélectionner l'opération active de la sidebar
         const activeId = currentOp?.id
-        const preselect = activeId && data?.find((o: any) => o.id === activeId)
-          ? activeId
-          : data?.[0]?.id ?? ''
+        const preselect = (activeId && data?.find((o: any) => o.id === activeId)) ? activeId : data?.[0]?.id ?? ''
         if (preselect) { setSelectedOp(preselect); setOp(data?.find((o: any) => o.id === preselect) ?? null) }
         setLoading(false)
       })
@@ -88,57 +311,58 @@ export default function Analyse() {
     setExpandedCheck(null)
   }, [selectedOp, operations])
 
-  // Sync sidebar quand l'op change
   useEffect(() => {
     if (op) setCurrentOp({ id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut })
   }, [op?.id])
 
-  const rapport: QualityReport = op?.rapport_controles || {}
+  // Parsing des contrôles
+  const rapport = op?.rapport_controles || {}
   const verdict = rapport.verdict || 'ok'
   const checksRaw: any = rapport.checks || {}
 
-  // Backend returns checks as a dict {check_name: {status, warnings, errors, ...}}
-  // Convert to a normalized list for rendering
   const normalizedChecks: QualityCheck[] = Array.isArray(checksRaw)
     ? checksRaw.map((c: any) => typeof c === 'string' ? { name: c, status: 'pass' } : c)
-    : Object.entries(checksRaw).map(([name, data]: [string, any]) => {
-        const warnings = data?.warnings || []
-        const errors = data?.errors || []
-        const criticalAlerts = data?.critical_alerts || []
-        const allIssues = [...errors, ...warnings, ...criticalAlerts]
-        // Build a human message from the check data
-        let message = ''
-        if (data?.status === 'pass') {
-          if (data?.nb_total) message = `${data.nb_valid ?? data.nb_total}/${data.nb_total} valides`
-          else if (data?.cross_check) message = 'Coherence verifiee'
-          else if (data?.taux_completude_pct != null) message = `Taux completude ${data.taux_completude_pct}%`
-        } else if (criticalAlerts.length > 0) {
-          message = criticalAlerts[0]
-          if (typeof message !== 'string') message = JSON.stringify(message)
-        } else if (warnings.length > 0) {
-          const w = warnings[0]
-          message = typeof w === 'string' ? w : (w?.note || w?.type || `${warnings.length} avertissement(s)`)
-        }
-        return {
-          name,
-          status: data?.status || 'pass',
-          message,
-          nb_issues: allIssues.length || undefined,
-          issues: allIssues.length > 0 ? allIssues : undefined,
-        }
-      })
+    : Object.entries(checksRaw).map(([name, data]: [string, any]) => ({
+        name,
+        status: data?.status || 'pass',
+        ...data,
+        issues: [...(data?.errors || []), ...(data?.warnings || []), ...(data?.criticalAlerts || [])],
+      }))
 
-  const sample = (op?.donnees_normalisees as any[])?.slice(0, 5) || []
+  const nbWarnings = normalizedChecks.filter(c => c.status === 'warn' || c.status === 'warning').length
+  const nbErrors   = normalizedChecks.filter(c => c.status === 'fail' || c.status === 'error').length
+
+  const verdictConfig = nbErrors > 0
+    ? { bg: 'bg-red-50', border: 'border-red-200', dot: 'bg-red-500', title: `${nbErrors} erreur(s) bloquante(s) — vérifier avant de continuer`, sub: 'Des erreurs critiques ont été détectées dans les données importées.', textColor: 'text-red-800', subColor: 'text-red-600' }
+    : nbWarnings > 0
+    ? { bg: 'bg-amber-50', border: 'border-amber-200', dot: 'bg-amber-500', title: `${nbWarnings} point(s) d'attention — peut procéder à la palettisation`, sub: 'Aucun blocage critique. Les anomalies sont documentées et non bloquantes.', textColor: 'text-amber-800', subColor: 'text-amber-600' }
+    : { bg: 'bg-green-50', border: 'border-green-200', dot: 'bg-green-500', title: 'Données valides — prêt pour la palettisation', sub: 'Tous les contrôles sont passés. Vous pouvez lancer la palettisation.', textColor: 'text-green-800', subColor: 'text-green-600' }
+
+  const exPaquet = op?.ex_par_paquet
+  const exCarton = op?.ex_par_carton || (exPaquet ? exPaquet * 2 : null)
+  const crtPal   = op?.cartons_par_palette
+  const poids    = op?.poids_unitaire_kg
+  const exPal    = exCarton && crtPal ? exCarton * crtPal : null
+  const nbPalEst = op?.total_exemplaires && exPal ? Math.ceil(op.total_exemplaires / exPal) : null
+  const poidsPal = poids && exPal ? Math.round(exPal * poids) : null
 
   return (
-    <div>
-      <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+    <div className="h-full flex flex-col" style={{ minHeight: 0 }}>
+
+      {/* Header */}
+      <div className="px-5 py-3.5 border-b border-stone-200 flex items-center justify-between flex-shrink-0 bg-white">
         <div>
-          <h1 className="text-base font-semibold text-gray-900">Analyse des donnees</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Resultats des controles qualite et apercu donnees normalisees</p>
+          <h1 className="text-base font-semibold text-stone-900">Analyse des données</h1>
+          {op?.nom_fichier_import && (
+            <div className="text-xs text-stone-400 mt-0.5 flex items-center gap-1">
+              <FileSpreadsheet size={11} />
+              {op.nom_fichier_import}
+              {op.date_import && <span>· {new Date(op.date_import).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}</span>}
+            </div>
+          )}
         </div>
         <select value={selectedOp} onChange={e => setSelectedOp(e.target.value)}
-          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white">
+          className="px-3 py-1.5 text-xs border border-stone-200 rounded-lg bg-white text-stone-700 outline-none focus:border-brand-400">
           {operations.map(o => (
             <option key={o.id} value={o.id}>{o.code_operation} — {o.nom_operation ?? o.code_operation}</option>
           ))}
@@ -146,168 +370,168 @@ export default function Analyse() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-gray-400 text-center py-12">Chargement...</div>
+        <div className="text-sm text-stone-400 text-center py-12">Chargement...</div>
       ) : !op ? (
         <div className="text-center py-16">
-          <FileSpreadsheet size={32} className="mx-auto text-gray-300 mb-3" />
-          <div className="text-sm text-gray-500">Aucune operation analysee</div>
-          <div className="text-xs text-gray-400 mt-1">Importez un fichier de repartition pour lancer l'analyse</div>
+          <FileSpreadsheet size={32} className="mx-auto text-stone-300 mb-3" />
+          <div className="text-sm text-stone-500">Aucune opération analysée</div>
           <button onClick={() => navigate('/import')}
-            className="mt-4 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+            className="mt-4 px-4 py-2 text-xs bg-stone-900 text-white rounded-lg hover:opacity-85 transition-all">
             Importer un fichier
           </button>
         </div>
       ) : (
-        <div className="max-w-4xl mx-auto px-5 py-6 space-y-6">
-          {/* Verdict global */}
-          <div className={`border rounded-xl p-4 ${VERDICT_STYLES[verdict] ?? 'bg-gray-50 text-gray-700 border-gray-200'}`}>
-            <div className="flex items-center gap-2">
-              <StatusIcon status={verdict} />
-              <span className="font-medium text-sm">
-                Verdict global : {STATUS_LABELS[verdict] ?? verdict}
-              </span>
-            </div>
-            {rapport.summary?.nb_critical_alerts !== undefined && rapport.summary.nb_critical_alerts > 0 && (
-              <div className="text-[11px] mt-1 opacity-80">
-                {rapport.summary.nb_critical_alerts} alerte(s) critique(s)
+        /* Layout deux colonnes : analyse | chat */
+        <div className="flex-1 flex overflow-hidden min-h-0">
+
+          {/* Colonne gauche — analyse */}
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 min-w-0">
+
+            {/* Verdict */}
+            <div className={`${verdictConfig.bg} border ${verdictConfig.border} rounded-xl p-4 flex items-start gap-3`}>
+              <div className={`w-2.5 h-2.5 rounded-full ${verdictConfig.dot} flex-shrink-0 mt-1`} />
+              <div>
+                <div className={`text-sm font-medium ${verdictConfig.textColor}`}>{verdictConfig.title}</div>
+                <div className={`text-xs mt-0.5 ${verdictConfig.subColor}`}>{verdictConfig.sub}</div>
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Stats summary */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">Magasins</div>
-              <div className="text-xl font-semibold mt-0.5">{op.nb_magasins ?? '—'}</div>
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: 'Magasins',    value: op.nb_magasins?.toLocaleString('fr-FR') },
+                { label: 'Exemplaires', value: op.total_exemplaires?.toLocaleString('fr-FR') },
+                { label: 'Centrales',   value: op.nb_centrales },
+                { label: 'PDV',         value: op.nb_palettes_pdv ?? '—' },
+              ].map((s, i) => (
+                <div key={i} className="bg-stone-50 rounded-lg p-3">
+                  <div className="text-[10px] text-stone-400 mb-0.5">{s.label}</div>
+                  <div className="text-xl font-semibold text-stone-900">{s.value ?? '—'}</div>
+                </div>
+              ))}
             </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">Exemplaires</div>
-              <div className="text-xl font-semibold mt-0.5">{(op.total_exemplaires ?? 0).toLocaleString()}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">Centrales</div>
-              <div className="text-xl font-semibold mt-0.5">{op.nb_centrales ?? '—'}</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="text-[11px] text-gray-500">PDV individuels</div>
-              <div className="text-xl font-semibold mt-0.5">{op.nb_palettes_pdv ?? '—'}</div>
-            </div>
-          </div>
 
-          {/* Controles qualite */}
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-              <h3 className="font-medium text-sm">Controles qualite</h3>
-              <p className="text-[10px] text-gray-400 mt-0.5">{normalizedChecks.length} controle(s) systematique(s)</p>
-            </div>
-            <div>
-              {normalizedChecks.length === 0 && (
-                <div className="px-4 py-6 text-xs text-gray-400 text-center">Aucun rapport de controles disponible</div>
-              )}
-              {normalizedChecks.map((c, i) => {
-                const label = CHECK_LABELS[c.name] ?? c.name
+            {/* Contrôles */}
+            <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 bg-stone-50 border-b border-stone-100">
+                <div className="text-xs font-medium text-stone-700">Contrôles qualité</div>
+              </div>
+              {normalizedChecks.length === 0 ? (
+                <div className="px-4 py-6 text-xs text-stone-400 text-center">Aucun rapport disponible</div>
+              ) : normalizedChecks.map((c, i) => {
+                const meta = CHECK_META[c.name]
+                const isOk = c.status === 'pass' || c.status === 'ok'
+                const impact = isOk ? 'ok' : (meta?.impact ?? 'attention')
+                const cfg = IMPACT_CONFIG[impact]
+                const Icon = cfg.icon
+                const explanation = meta?.explain(c) ?? c.message ?? ''
+                const issues = (c.issues || []).filter(Boolean)
                 const isExpanded = expandedCheck === c.name
-                const hasIssues = (c.issues && c.issues.length > 0) || (c.nb_issues && c.nb_issues > 0)
+
                 return (
-                  <div key={i} className="border-b border-gray-100 last:border-0">
-                    <div
-                      className={`flex items-start gap-3 px-4 py-3 ${hasIssues ? 'cursor-pointer hover:bg-gray-50/50' : ''}`}
-                      onClick={() => hasIssues && setExpandedCheck(isExpanded ? null : c.name)}
-                    >
-                      <StatusIcon status={c.status} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-gray-900">{label}</div>
-                        {c.message && <div className="text-[11px] text-gray-500 mt-0.5">{c.message}</div>}
+                  <div key={i} className="border-b border-stone-100 last:border-0">
+                    <div className={`flex items-start gap-3 px-4 py-3.5 ${issues.length > 0 ? 'cursor-pointer hover:bg-stone-50' : ''}`}
+                      onClick={() => issues.length > 0 && setExpandedCheck(isExpanded ? null : c.name)}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${cfg.bg} border ${cfg.border}`}>
+                        <Icon size={12} className={isOk ? 'text-green-600' : impact === 'bloquant' ? 'text-red-600' : impact === 'informatif' ? 'text-blue-600' : 'text-amber-600'} />
                       </div>
-                      {c.nb_issues !== undefined && c.nb_issues > 0 && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">
-                          {c.nb_issues}
-                        </span>
-                      )}
-                      {hasIssues && (
-                        isExpanded
-                          ? <ChevronDown size={12} className="text-gray-400 mt-0.5" />
-                          : <ChevronRight size={12} className="text-gray-400 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-stone-800">{meta?.label ?? c.name}</span>
+                          {!isOk && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${cfg.badge} font-medium`}>
+                              {impact}
+                            </span>
+                          )}
+                          {issues.length > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-100 text-stone-500 font-medium">
+                              {issues.length}
+                            </span>
+                          )}
+                        </div>
+                        {explanation && <div className="text-xs text-stone-500 mt-0.5 leading-relaxed">{explanation}</div>}
+                      </div>
+                      {issues.length > 0 && (
+                        isExpanded ? <ChevronDown size={12} className="text-stone-400 flex-shrink-0 mt-1" />
+                                   : <ChevronRight size={12} className="text-stone-400 flex-shrink-0 mt-1" />
                       )}
                     </div>
-                    {isExpanded && c.issues && c.issues.length > 0 && (
-                      <div className="px-4 pb-3 pt-1 bg-gray-50/30">
-                        <div className="text-[10px] text-gray-400 mb-1">Premieres anomalies :</div>
-                        <pre className="text-[10px] bg-white border border-gray-200 rounded p-2 overflow-x-auto max-h-40 text-gray-600">
-                          {JSON.stringify(c.issues.slice(0, 5), null, 2)}
-                        </pre>
+                    {isExpanded && issues.length > 0 && (
+                      <div className="px-4 pb-3">
+                        <div className="bg-stone-50 rounded-lg border border-stone-200 px-3 py-1">
+                          {issues.slice(0, 8).map((issue, j) => (
+                            <IssueRow key={j} issue={issue} index={j} />
+                          ))}
+                          {issues.length > 8 && (
+                            <div className="text-[10px] text-stone-400 py-2 text-center">{issues.length - 8} autres non affichés</div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
                 )
               })}
             </div>
-          </div>
 
-          {/* Apercu donnees normalisees */}
-          {sample.length > 0 && (
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <h3 className="font-medium text-sm">Apercu donnees normalisees</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">5 premieres lignes sur {op.nb_magasins ?? 0} magasins</p>
+            {/* Paramètres + estimation */}
+            <div className="bg-white border border-stone-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs font-medium text-stone-700">Paramètres de palettisation</div>
+                <button onClick={() => navigate(`/operations/${op.id}`)}
+                  className="text-[10px] text-brand-600 hover:text-brand-700 transition-colors">
+                  Modifier →
+                </button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[11px]">
-                  <thead className="bg-gray-50/50">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">Centrale</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">Code PDV</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">Nom</th>
-                      <th className="text-left px-3 py-2 font-medium text-gray-500">Ville</th>
-                      <th className="text-right px-3 py-2 font-medium text-gray-500">Quantite</th>
-                      <th className="text-center px-3 py-2 font-medium text-gray-500">PDV</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sample.map((row: any, i: number) => (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-3 py-2 text-gray-700">{row.regroupement}</td>
-                        <td className="px-3 py-2 font-mono text-gray-500">{row.code_pdv}</td>
-                        <td className="px-3 py-2 text-gray-900">{row.nom_pdv}</td>
-                        <td className="px-3 py-2 text-gray-500">{row.ville}</td>
-                        <td className="px-3 py-2 text-right font-mono text-gray-900">{row.quantite?.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-center">
-                          {row.flag_pdv && <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium">PDV</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-5 gap-2">
+                {[
+                  { label: 'Ex/paquet',     value: exPaquet,  sub: 'machine' },
+                  { label: 'Ex/carton',     value: exCarton,  sub: exPaquet ? `${exCarton && exPaquet ? Math.round(exCarton/exPaquet) : '?'} paq.` : 'estimé' },
+                  { label: 'Crt/palette',   value: crtPal,    sub: 'Frétin' },
+                  { label: 'Seuil PDV',     value: op.seuil_pdv?.toLocaleString('fr-FR'), sub: 'exemplaires' },
+                  { label: 'Poids/ex',      value: poids ? `${poids} kg` : null, sub: 'calculé' },
+                ].map((p, i) => (
+                  <div key={i} className={`rounded-lg p-2.5 border ${!p.value ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
+                    <div className="text-[10px] text-stone-400 mb-0.5">{p.label}</div>
+                    <div className={`text-base font-semibold ${!p.value ? 'text-amber-600' : 'text-stone-900'}`}>{p.value ?? '⚠'}</div>
+                    <div className="text-[10px] text-stone-400">{p.sub}</div>
+                  </div>
+                ))}
               </div>
-            </div>
-          )}
-
-          {/* Conditionnement recap */}
-          <div className="border border-gray-200 rounded-xl p-4">
-            <h3 className="font-medium text-sm mb-3">Parametres de conditionnement</h3>
-            <div className="grid grid-cols-5 gap-3">
-              {[
-                { label: 'Ex/paquet', value: op.ex_par_paquet },
-                { label: 'Ex/carton', value: op.ex_par_carton },
-                { label: 'Crt/palette', value: op.cartons_par_palette },
-                { label: 'Seuil PDV', value: op.seuil_pdv?.toLocaleString() },
-                { label: 'Poids unit.', value: op.poids_unitaire_kg ? `${op.poids_unitaire_kg} kg` : null },
-              ].map((p, i) => (
-                <div key={i} className="bg-gray-50 rounded-lg px-3 py-2">
-                  <div className="text-[10px] text-gray-400">{p.label}</div>
-                  <div className="text-sm font-medium mt-0.5">{p.value ?? '—'}</div>
+              {(nbPalEst || poidsPal) && (
+                <div className="mt-3 text-xs text-stone-400 border-t border-stone-100 pt-3">
+                  Estimation :
+                  {nbPalEst && <span className="text-stone-700 font-medium ml-1">~{nbPalEst} palettes</span>}
+                  {poidsPal && <span className="ml-2">· {poidsPal.toLocaleString('fr-FR')} kg/palette</span>}
+                  {exPal && <span className="ml-2">· {exPal.toLocaleString('fr-FR')} ex/palette</span>}
                 </div>
-              ))}
+              )}
+            </div>
+
+            {/* CTA */}
+            <div className="flex items-center justify-between pb-2">
+              <button onClick={() => navigate('/import')}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs text-stone-500 border border-stone-200 rounded-lg hover:bg-stone-50 transition-colors">
+                <RefreshCw size={11} /> Re-importer
+              </button>
+              <button onClick={() => navigate(`/palettisation/${op.id}`)}
+                className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium bg-stone-900 text-white rounded-xl hover:opacity-85 transition-all">
+                {['palettisation','livrables','termine'].includes(op.statut) ? 'Voir la palettisation' : 'Lancer la palettisation'}
+                <ArrowRight size={14} />
+              </button>
             </div>
           </div>
 
-          {/* Next step */}
-          <div className="flex justify-end">
-            <button onClick={() => navigate(`/palettisation/${op.id}`)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
-              Lancer la palettisation <ArrowRight size={14} />
-            </button>
+          {/* Colonne droite — chat IA */}
+          <div className="w-80 flex-shrink-0 border-l border-stone-200 flex flex-col bg-white" style={{ minHeight: 0 }}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-stone-200 flex-shrink-0">
+              <Sparkles size={13} className="text-brand-500" />
+              <span className="text-sm font-medium text-stone-800">Assistant analyse</span>
+            </div>
+            <div className="flex-1 min-h-0">
+              <AnalyseChat op={op} />
+            </div>
           </div>
+
         </div>
       )}
     </div>
