@@ -57,6 +57,7 @@ export default function Dashboard() {
 
   const inProgress = ops.filter(o => o.statut !== 'termine')
   const done       = ops.filter(o => o.statut === 'termine')
+  const hasOps     = ops.length > 0
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px' }}>
@@ -66,6 +67,35 @@ export default function Dashboard() {
         <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1A1A1A', margin: 0 }}>Accueil</h1>
         <p style={{ fontSize: 14, color: '#888', marginTop: 4 }}>Créer une opération ou reprendre où vous en étiez.</p>
       </div>
+
+      {/* Onboarding — première utilisation */}
+      {!loading && !hasOps && (
+        <div style={{ border: '1px solid #E8E6E0', borderRadius: 12, overflow: 'hidden', marginBottom: 24 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #F0EDE8', background: '#FAFAF8' }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A' }}>Bienvenue sur Nanotera</div>
+            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Voici comment traiter votre première opération en 4 étapes</div>
+          </div>
+          {[
+            { n: '1', title: 'Créer une opération', desc: 'Renseignez le code, l'enseigne, les specs du document et le conditionnement souhaité.', action: () => navigate('/operations/new'), cta: 'Nouvelle opération' },
+            { n: '2', title: 'Importer le fichier de répartition', desc: 'Déposez le fichier .xls multi-onglets du client (1 onglet = 1 centrale). L'analyse est automatique.', action: () => navigate('/import'), cta: 'Aller à l'import' },
+            { n: '3', title: 'Vérifier l'analyse et lancer la palettisation', desc: 'Contrôlez les anomalies, vérifiez les paramètres, puis lancez la composition des palettes.', action: null, cta: null },
+            { n: '4', title: 'Générer les livrables', desc: 'Fiches palettes, bons de livraison et base étiquettes cartons en un clic.', action: null, cta: null },
+          ].map(step => (
+            <div key={step.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 20px', borderBottom: '1px solid #F0EDE8' }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#6B52C8', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0, marginTop: 2 }}>{step.n}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: '#1A1A1A' }}>{step.title}</div>
+                <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{step.desc}</div>
+              </div>
+              {step.action && (
+                <button onClick={step.action} style={{ fontSize: 11, padding: '5px 12px', border: '1px solid #E8E6E0', borderRadius: 8, background: '#fff', cursor: 'pointer', color: '#555', flexShrink: 0, fontFamily: 'inherit' }}>
+                  {step.cta}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* CTA principal */}
       <button onClick={() => navigate('/operations/new')}
