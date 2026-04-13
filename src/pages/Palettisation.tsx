@@ -628,7 +628,6 @@ export default function Palettisation() {
             </button>
           </div>
         </div>
-          </div>
           )}
         </div>
       )}
