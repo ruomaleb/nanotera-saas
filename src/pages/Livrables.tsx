@@ -46,27 +46,31 @@ const DESCRIPTIONS: Record<string, (op: any) => string> = {
   recap:              ()  => `Synthese 16 centrales × palettes FRETIN/APPL, poids, dates enlevement`,
 }
 
-// ── Chargement CDN dynamique ────────────────────────────────────────
+// ── Imports statiques — pas de CDN ────────────────────────────────
+// npm install docx-preview xlsx x-data-spreadsheet
+import { renderAsync } from 'docx-preview'
+import * as XLSX from 'xlsx'
+import Spreadsheet from 'x-data-spreadsheet'
+import 'x-data-spreadsheet/dist/xspreadsheet.css'
+import 'docx-preview/dist/docx-preview.min.css'
 
-function loadAsset(tag: 'script' | 'link', src: string, globalKey?: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    if (globalKey && (window as any)[globalKey]) { resolve((window as any)[globalKey]); return }
-    if (document.querySelector(`[src="${src}"], [href="${src}"]`)) {
-      setTimeout(() => resolve(globalKey ? (window as any)[globalKey] : true), 200)
-      return
+// Convertit un workbook SheetJS au format x-spreadsheet
+function stox(wb: XLSX.WorkBook) {
+  return wb.SheetNames.map(name => {
+    const ws = wb.Sheets[name]
+    const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } }
+    const rows: any = {}
+    for (let r = ref.s.r; r <= ref.e.r; r++) {
+      const cells: any = {}
+      for (let cc = ref.s.c; cc <= ref.e.c; cc++) {
+        const addr = XLSX.utils.encode_cell({ r, c: cc })
+        const cell = ws[addr]
+        if (!cell) continue
+        cells[cc] = { text: cell.w ?? String(cell.v ?? '') }
+      }
+      if (Object.keys(cells).length) rows[r] = { cells }
     }
-    if (tag === 'script') {
-      const s = document.createElement('script')
-      s.src = src
-      s.onload = () => resolve(globalKey ? (window as any)[globalKey] : true)
-      s.onerror = reject
-      document.head.appendChild(s)
-    } else {
-      const l = document.createElement('link')
-      l.rel = 'stylesheet'; l.href = src
-      l.onload = resolve; l.onerror = reject
-      document.head.appendChild(l)
-    }
+    return { name, rows }
   })
 }
 
@@ -96,14 +100,7 @@ function PreviewPanel({
       const buf = await l.blob.arrayBuffer()
 
       if (l.type === 'docx') {
-        // docx-preview : rendu fidèle Word avec mise en page
-        await loadAsset('link',
-          'https://cdn.jsdelivr.net/npm/docx-preview@0.1.28/dist/docx-preview.min.css')
-        const lib = await loadAsset('script',
-          'https://cdn.jsdelivr.net/npm/docx-preview@0.1.28/dist/docx-preview.umd.min.js',
-          'docx')
-        if (!lib?.renderAsync) throw new Error('docx-preview non chargé')
-        await lib.renderAsync(buf, container, container, {
+        await renderAsync(buf, container, container, {
           className: 'docx-preview',
           inWrapper: true,
           ignoreWidth: false,
@@ -114,37 +111,8 @@ function PreviewPanel({
           renderFooters: true,
           renderFootnotes: true,
         })
-
       } else {
-        // SheetJS parse + x-spreadsheet rendu
-        const XLSX = await loadAsset('script',
-          'https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js', 'XLSX')
-        await loadAsset('link',
-          'https://cdn.jsdelivr.net/npm/x-data-spreadsheet@1.1.9/dist/xspreadsheet.css')
-        const Spreadsheet = await loadAsset('script',
-          'https://cdn.jsdelivr.net/npm/x-data-spreadsheet@1.1.9/dist/xspreadsheet.js',
-          'Spreadsheet')
-
-        const wb = XLSX.read(buf, { type: 'array' })
-
-        // Convertir SheetJS → format x-spreadsheet
-        const stox = (wb: any) => wb.SheetNames.map((name: string) => {
-          const ws = wb.Sheets[name]
-          const ref = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } }
-          const rows: any = {}
-          for (let r = ref.s.r; r <= ref.e.r; r++) {
-            const cells: any = {}
-            for (let c = ref.s.c; c <= ref.e.c; c++) {
-              const addr = XLSX.utils.encode_cell({ r, c })
-              const cell = ws[addr]
-              if (!cell) continue
-              cells[c] = { text: cell.w ?? String(cell.v ?? '') }
-            }
-            if (Object.keys(cells).length) rows[r] = { cells }
-          }
-          return { name, rows }
-        })
-
+        const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
         container.style.height = '100%'
         const xs = new (Spreadsheet as any)(container, {
           mode: 'read',
