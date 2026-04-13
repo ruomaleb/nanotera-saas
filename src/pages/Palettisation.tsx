@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useOpContext } from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
@@ -67,9 +66,18 @@ function PaletteCard({ p, isPdv, magasins, exParCarton }: PaletteCardProps) {
             <span>Exemplaires</span>
             <span className="font-mono font-medium">{p.nb_exemplaires.toLocaleString()}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between items-center">
             <span>Cartons</span>
-            <span className="font-mono">{nbCartons}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono">{nbCartons}</span>
+              {!isPdv && exParCarton > 0 && (() => {
+                const exTheo = nbCartons * exParCarton
+                const fill = exTheo > 0 ? Math.round(p.nb_exemplaires / exTheo * 100) : 100
+                return fill < 95
+                  ? <span className="text-[10px] text-amber-600 font-medium">{fill}% plein</span>
+                  : null
+              })()}
+            </div>
           </div>
           <div className="flex justify-between">
             <span>Poids</span>
@@ -164,7 +172,6 @@ type Mode = 'view' | 'edit'
 export default function Palettisation() {
   const { operationId } = useParams()
   const navigate = useNavigate()
-  const { setCurrentOp } = useOpContext()
   const [operations, setOperations]     = useState<any[]>([])
   const [selectedOp, setSelectedOp]     = useState(operationId || '')
   const [op, setOp]                     = useState<any>(null)
@@ -210,9 +217,6 @@ export default function Palettisation() {
     ])
 
     setOp(opResp.data)
-    if (opResp.data) {
-      setCurrentOp({ id: opResp.data.id, code: opResp.data.code_operation, nom: opResp.data.nom_operation ?? '', statut: opResp.data.statut })
-    }
     setPalettes(palResp.data ?? [])
     if (palResp.data) {
       setExpandedCentrales(new Set(palResp.data.map((p: any) => p.centrale_nom)))
