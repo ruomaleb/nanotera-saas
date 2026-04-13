@@ -341,7 +341,20 @@ export default function Analyse() {
   const exPaquet = op?.ex_par_paquet
   const exCarton = op?.ex_par_carton || (exPaquet ? exPaquet * 2 : null)
   const crtPal   = op?.cartons_par_palette
-  const poids    = op?.poids_unitaire_kg
+  // Calculer poids à la volée si absent mais specs disponibles
+  const poidsStored = op?.poids_unitaire_kg
+  const poidsCalc = (() => {
+    if (poidsStored) return poidsStored
+    const pag = op?.pagination
+    const fmt = op?.format_document || ''
+    const grm = op?.grammage
+    if (!pag || !grm || !fmt.includes('x')) return null
+    try {
+      const [l, h] = fmt.toLowerCase().split('x').map((v: string) => parseFloat(v) / 100)
+      return Math.round((pag / 2) * l * h * grm / 1000 * 10000) / 10000
+    } catch { return null }
+  })()
+  const poids = poidsCalc
   const exPal    = exCarton && crtPal ? exCarton * crtPal : null
   const nbPalEst = op?.total_exemplaires && exPal ? Math.ceil(op.total_exemplaires / exPal) : null
   const poidsPal = poids && exPal ? Math.round(exPal * poids) : null
@@ -484,15 +497,17 @@ export default function Analyse() {
               </div>
               <div className="grid grid-cols-5 gap-2">
                 {[
-                  { label: 'Ex/paquet',     value: exPaquet,  sub: 'machine' },
-                  { label: 'Ex/carton',     value: exCarton,  sub: exPaquet ? `${exCarton && exPaquet ? Math.round(exCarton/exPaquet) : '?'} paq.` : 'estimé' },
-                  { label: 'Crt/palette',   value: crtPal,    sub: 'Frétin' },
-                  { label: 'Seuil PDV',     value: op.seuil_pdv?.toLocaleString('fr-FR'), sub: 'exemplaires' },
-                  { label: 'Poids/ex',      value: poids ? `${poids} kg` : null, sub: 'calculé' },
+                  { label: 'Ex/paquet',   value: exPaquet,  sub: 'machine',      warn: true  },
+                  { label: 'Ex/carton',   value: exCarton,  sub: exPaquet ? `${exCarton && exPaquet ? Math.round(exCarton/exPaquet) : '?'} paq.` : 'estimé', warn: true },
+                  { label: 'Crt/palette', value: crtPal,    sub: 'Frétin',       warn: true  },
+                  { label: 'Seuil PDV',   value: op.seuil_pdv?.toLocaleString('fr-FR'), sub: 'exemplaires', warn: true },
+                  { label: 'Poids/ex',    value: poids ? `${poids} kg` : null,   sub: 'calculé',      warn: false },
                 ].map((p, i) => (
-                  <div key={i} className={`rounded-lg p-2.5 border ${!p.value ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
+                  <div key={i} className={`rounded-lg p-2.5 border ${!p.value && p.warn ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
                     <div className="text-[10px] text-stone-400 mb-0.5">{p.label}</div>
-                    <div className={`text-base font-semibold ${!p.value ? 'text-amber-600' : 'text-stone-900'}`}>{p.value ?? '⚠'}</div>
+                    <div className={`text-base font-semibold ${!p.value && p.warn ? 'text-amber-600' : !p.value ? 'text-stone-400' : 'text-stone-900'}`}>
+                      {p.value ?? (p.warn ? '⚠' : '—')}
+                    </div>
                     <div className="text-[10px] text-stone-400">{p.sub}</div>
                   </div>
                 ))}
