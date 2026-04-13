@@ -396,21 +396,9 @@ export default function Palettisation() {
           </div>
         </div>
 
-      ) : mode === 'edit' ? (
-
-        /* ── Mode éditeur ── */
-        <div className="max-w-5xl mx-auto px-5 py-6">
-          <PaletteEditor
-            operationId={op.id}
-            rawPalettes={palettes}
-            conditionnement={conditionnement}
-            onSaved={loadPalettes}
-          />
-        </div>
-
       ) : (
 
-        /* ── Mode vue ── */
+        /* ── Vue + Édition (même conteneur) ── */
         <div className="max-w-5xl mx-auto px-5 py-6 space-y-5">
 
           {/* Stats */}
@@ -558,7 +546,17 @@ export default function Palettisation() {
             </div>
           )}
 
-          {/* Groupes par centrale */}
+          {/* Contenu conditionnel : éditeur ou liste */}
+          {mode === 'edit' ? (
+            <PaletteEditor
+              operationId={op.id}
+              rawPalettes={palettes}
+              conditionnement={conditionnement}
+              onSaved={loadPalettes}
+              onDone={() => setMode('view')}
+            />
+          ) : (
+          <div className="space-y-4">
           {Object.entries(grouped).map(([centrale, pals]) => {
             const isExpanded = expandedCentrales.has(centrale)
             const totalEx    = pals.reduce((s, p) => s + p.nb_exemplaires, 0)
@@ -629,6 +627,9 @@ export default function Palettisation() {
               Générer les livrables <ArrowRight size={14} />
             </button>
           </div>
+        </div>
+          </div>
+          )}
         </div>
       )}
     </div>
