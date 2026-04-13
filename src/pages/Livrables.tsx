@@ -65,61 +65,66 @@ function PreviewPanel({
   hasPrev: boolean; hasNext: boolean
   onGenerate: (l: Livrable) => Promise<void>
 }) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const docxRef               = useRef<HTMLDivElement>(null)
   const [xlsxSheets, setXlsxSheets] = useState<any[]>([])
   const [loading, setLoading]     = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError]         = useState('')
-  const [rendered, setRendered]   = useState(false)
 
-  const render = useCallback(async (l: Livrable) => {
-    if (!l.blob || !containerRef.current) return
-    setLoading(true); setError(''); setRendered(false)
-    const container = containerRef.current
-    container.innerHTML = ''
-
+  // ── Rendu docx ──
+  const renderDocx = useCallback(async (blob: Blob) => {
+    if (!docxRef.current) return
+    setLoading(true); setError('')
+    docxRef.current.innerHTML = ''
     try {
-      const buf = await l.blob.arrayBuffer()
-
-      if (l.type === 'docx') {
-        await renderAsync(buf, container, container, {
-          className: 'docx-preview',
-          inWrapper: true,
-          ignoreWidth: false,
-          ignoreHeight: false,
-          ignoreFonts: false,
-          breakPages: true,
-          renderHeaders: true,
-          renderFooters: true,
-          renderFootnotes: true,
-        })
-      } else {
-        // luckyexcel convertit l'ArrayBuffer en format fortune-sheet
-        const result = await new Promise<any[]>((resolve, reject) => {
-          transformExcelToLucky(
-            new File([buf], 'preview.xlsx'),
-            (exportJson: any) => {
-              if (exportJson.sheets) resolve(exportJson.sheets)
-              else reject(new Error('Format non supporté'))
-            },
-            (err: any) => reject(err)
-          )
-        })
-        setXlsxSheets(result)
-      }
-
-      setRendered(true)
+      const buf = await blob.arrayBuffer()
+      await renderAsync(buf, docxRef.current, docxRef.current, {
+        inWrapper: true, ignoreWidth: false, ignoreHeight: false,
+        breakPages: true, renderHeaders: true, renderFooters: true,
+      })
     } catch (e: any) {
-      setError(`Erreur de prévisualisation : ${e.message ?? e}`)
+      setError(`Erreur docx : ${e.message}`)
     }
     setLoading(false)
   }, [])
 
+  // ── Rendu xlsx ──
+  const renderXlsx = useCallback(async (blob: Blob) => {
+    setLoading(true); setError(''); setXlsxSheets([])
+    try {
+      const file = new File([blob], 'preview.xlsx',
+        { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const sheets = await new Promise<any[]>((resolve, reject) => {
+        transformExcelToLucky(
+          file,
+          (exportJson: any) => {
+            if (exportJson?.sheets?.length) resolve(exportJson.sheets)
+            else reject(new Error('Aucune feuille — format xls non supporté, utilisez xlsx'))
+          },
+          (err: any) => reject(new Error(String(err)))
+        )
+      })
+      setXlsxSheets(sheets)
+    } catch (e: any) {
+      setError(`Erreur xlsx : ${e.message}`)
+    }
+    setLoading(false)
+  }, [])
+
+  // Déclencher le bon rendu quand le livrable change
   useEffect(() => {
-    setXlsxSheets([])
-    if (livrable.status === 'done' && livrable.blob) render(livrable)
-    else { setRendered(false); setError('') }
+    setXlsxSheets([]); setError('')
+    if (livrable.status !== 'done' || !livrable.blob) return
+    if (livrable.type === 'docx') renderDocx(livrable.blob)
+    else renderXlsx(livrable.blob)
   }, [livrable.id, livrable.blob])
+
+  // Pour docx, re-rendre quand le ref est disponible
+  useEffect(() => {
+    if (livrable.type === 'docx' && livrable.blob && docxRef.current && !loading) {
+      renderDocx(livrable.blob)
+    }
+  }, [docxRef.current])
 
   const handleGenerate = async () => {
     setGenerating(true)
@@ -128,11 +133,12 @@ function PreviewPanel({
   }
 
   const Icon = livrable.icon
+  const isReady = livrable.status === 'done' && livrable.blob
 
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-[60rem] max-w-[92vw] bg-white flex flex-col shadow-2xl">
+      <div className="w-[62rem] max-w-[92vw] bg-white flex flex-col shadow-2xl">
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 flex-shrink-0">
@@ -144,7 +150,7 @@ function PreviewPanel({
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 flex-shrink-0">.{livrable.type}</span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            {livrable.status === 'done' && livrable.blob && (
+            {isReady && (
               <button onClick={() => livrable.blob && triggerDownload(livrable.blob, livrable.filename ?? livrable.label)}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-xs border border-stone-200 rounded-lg hover:bg-stone-50 transition-colors">
                 <Download size={11} /> Télécharger
@@ -156,10 +162,11 @@ function PreviewPanel({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden relative bg-stone-100">
-          {/* Prompt generation si pas encore généré */}
-          {livrable.status !== 'done' && !loading && (
+        {/* Corps */}
+        <div className="flex-1 overflow-hidden relative bg-stone-100" style={{ minHeight: 0 }}>
+
+          {/* Non généré */}
+          {!isReady && !generating && (
             <div className="flex flex-col items-center justify-center h-full gap-4">
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${livrable.type === 'docx' ? 'bg-blue-50' : 'bg-emerald-50'}`}>
                 <Icon size={22} className={livrable.type === 'docx' ? 'text-blue-400' : 'text-emerald-400'} />
@@ -168,55 +175,48 @@ function PreviewPanel({
                 <div className="text-sm font-medium text-stone-700">Document non encore généré</div>
                 <div className="text-xs text-stone-400 mt-1">{livrable.description}</div>
               </div>
-              <button onClick={handleGenerate} disabled={generating}
-                className="flex items-center gap-1.5 px-4 py-2 bg-stone-900 text-white text-xs rounded-lg hover:opacity-85 disabled:opacity-50">
-                {generating ? <><Loader2 size={12} className="animate-spin" /> Génération…</> : 'Générer et prévisualiser'}
+              <button onClick={handleGenerate}
+                className="flex items-center gap-1.5 px-4 py-2 bg-stone-900 text-white text-xs rounded-lg hover:opacity-85">
+                Générer et prévisualiser
               </button>
             </div>
           )}
 
-          {/* Loader */}
+          {/* Chargement */}
           {(loading || generating) && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stone-100">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stone-100 z-10">
               <Loader2 size={22} className="animate-spin text-stone-400" />
-              <div className="text-xs text-stone-400">{generating ? 'Génération du document…' : 'Chargement de la prévisualisation…'}</div>
+              <div className="text-xs text-stone-400">
+                {generating ? 'Génération…' : livrable.type === 'xlsx' ? 'Conversion Excel…' : 'Rendu Word…'}
+              </div>
             </div>
           )}
 
           {/* Erreur */}
           {error && !loading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 z-10">
               <AlertCircle size={20} className="text-red-400" />
-              <div className="text-xs text-red-600 text-center">{error}</div>
+              <div className="text-xs text-red-600 text-center max-w-md">{error}</div>
             </div>
           )}
 
-          {/* Rendu docx — docx-preview dans un div */}
-          {rendered && livrable.type === 'docx' && (
-            <div
-              ref={containerRef}
-              className="h-full overflow-auto"
-              style={{ background: '#e5e7eb' }}
-            />
-          )}
+          {/* Docx — div de rendu docx-preview */}
+          <div
+            ref={docxRef}
+            className="h-full overflow-auto"
+            style={{ display: livrable.type === 'docx' && !loading && !error && isReady ? 'block' : 'none' }}
+          />
 
-          {/* Rendu xlsx — Fortune Sheet (Excel-like) */}
-          {xlsxSheets.length > 0 && livrable.type === 'xlsx' && (
-            <div style={{ height: '100%', width: '100%' }}>
+          {/* Xlsx — Fortune Sheet */}
+          {livrable.type === 'xlsx' && xlsxSheets.length > 0 && !error && (
+            <div style={{ height: '100%', width: '100%', background: '#fff' }}>
               <Workbook
                 data={xlsxSheets}
                 showToolbar={false}
                 showFormulaBar={false}
                 showSheetTabs={true}
-                scrollX={0}
-                scrollY={0}
               />
             </div>
-          )}
-
-          {/* Fallback container pour docx (toujours dans le DOM pour renderAsync) */}
-          {livrable.type === 'docx' && !rendered && (
-            <div ref={containerRef} style={{ display: 'none' }} />
           )}
         </div>
       </div>
