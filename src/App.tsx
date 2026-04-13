@@ -91,6 +91,7 @@ export default function App() {
         <Route path="/palettisation" element={<Palettisation />} />
         <Route path="/palettisation/:operationId" element={<Palettisation />} />
         <Route path="/livrables" element={<Livrables />} />
+        <Route path="/livrables/:operationId" element={<Livrables />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/global" element={<AdminGlobal />} />
         <Route path="/admin/enseignes" element={<AdminEnseignes />} />

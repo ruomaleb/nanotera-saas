@@ -181,6 +181,9 @@ export default function Palettisation() {
   const [error, setError]               = useState('')
   const [mode, setMode]                 = useState<Mode>('view')
   const [expandedCentrales, setExpandedCentrales] = useState<Set<string>>(new Set())
+  const [showAiPanel, setShowAiPanel] = useState(false)
+  const [aiRecos, setAiRecos] = useState<any[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
 
   // Chargement liste opérations
   useEffect(() => {
@@ -225,6 +228,44 @@ export default function Palettisation() {
   }, [selectedOp])
 
   useEffect(() => { loadPalettes() }, [loadPalettes])
+
+  const handleAiAnalyse = async () => {
+    if (!op || aiLoading) return
+    setAiLoading(true)
+    setAiRecos([])
+    const API_BASE = import.meta.env.VITE_API_URL || 'https://nanotera-api-saas-production.up.railway.app'
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const resp = await fetch(`${API_BASE}/api/ai/analyse-palettes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          operation_id: op.id,
+          nb_palettes: palettes.length,
+          nb_grp: op.nb_palettes_grp ?? 0,
+          nb_pdv: op.nb_palettes_pdv ?? 0,
+          cartons_par_palette: op.cartons_par_palette ?? 48,
+          poids_max: 750,
+          resume_par_centrale: Object.entries(grouped).map(([nom, pals]) => ({
+            centrale: nom,
+            nb_palettes: pals.length,
+            nb_grp: pals.filter(p => p.type_palette === 'groupee').length,
+            nb_pdv: pals.filter(p => p.type_palette === 'pdv').length,
+            poids_total: Math.round(pals.reduce((s, p) => s + p.poids_kg, 0)),
+            taux_min: Math.min(...pals.filter(p=>p.taux_remplissage).map(p => p.taux_remplissage ?? 1)),
+          })),
+        }),
+      })
+      const data = await resp.json()
+      setAiRecos(data.recommandations ?? [])
+    } catch (e) {
+      setAiRecos([{ type: 'erreur', message: 'Impossible de contacter le service IA.' }])
+    }
+    setAiLoading(false)
+  }
 
   const handleRunBinpacking = async () => {
     if (!op) return
@@ -409,7 +450,7 @@ export default function Palettisation() {
           {/* Actions */}
           <div className="grid grid-cols-4 gap-3">
             <button
-              onClick={() => setMode('editor')}
+              onClick={() => setMode('edit')}
               className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
             >
               <Pencil size={16} className="text-stone-400" />
@@ -420,13 +461,13 @@ export default function Palettisation() {
             </button>
 
             <button
-              onClick={() => navigate('/analyse')}
-              className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
+              onClick={() => { setShowAiPanel(p => !p); if (!showAiPanel && aiRecos.length === 0) handleAiAnalyse() }}
+              className={`flex flex-col items-start gap-2 p-4 border rounded-xl transition-all text-left ${showAiPanel ? 'border-stone-900 bg-stone-900' : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50'}`}
             >
-              <Sparkles size={16} className="text-stone-400" />
+              <Sparkles size={16} className={showAiPanel ? 'text-white opacity-70' : 'text-stone-400'} />
               <div>
-                <div className="text-sm font-medium text-stone-800">Analyser le plan</div>
-                <div className="text-xs text-stone-400 mt-0.5">Anomalies, optimisations IA</div>
+                <div className={`text-sm font-medium ${showAiPanel ? 'text-white' : 'text-stone-800'}`}>Analyser le plan</div>
+                <div className={`text-xs mt-0.5 ${showAiPanel ? 'text-white opacity-50' : 'text-stone-400'}`}>Recommandations IA</div>
               </div>
             </button>
 
@@ -447,7 +488,7 @@ export default function Palettisation() {
             </button>
 
             <button
-              onClick={() => navigate(`/livrables/${op.id}`)}
+              onClick={() => navigate(`/livrables?op=${op.id}`)}
               className="flex flex-col items-start gap-2 p-4 border border-stone-900 rounded-xl bg-stone-900 hover:opacity-85 transition-all text-left"
             >
               <FileOutput size={16} className="text-white opacity-70" />
@@ -457,6 +498,53 @@ export default function Palettisation() {
               </div>
             </button>
           </div>
+
+          {/* Panneau recommandations IA */}
+          {showAiPanel && (
+            <div className="border border-stone-200 rounded-xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 bg-stone-50 border-b border-stone-200">
+                <Sparkles size={13} className="text-stone-500" />
+                <span className="text-sm font-medium text-stone-700">Recommandations IA</span>
+                {aiLoading && <Loader2 size={12} className="animate-spin text-stone-400 ml-1" />}
+              </div>
+              <div className="p-4 space-y-3">
+                {aiLoading && (
+                  <div className="text-xs text-stone-400 text-center py-4">Analyse du plan en cours…</div>
+                )}
+                {!aiLoading && aiRecos.length === 0 && (
+                  <div className="text-xs text-stone-400 text-center py-4">Aucune recommandation disponible</div>
+                )}
+                {aiRecos.map((r: any, i: number) => (
+                  <div key={i} className={`rounded-lg border p-3 ${
+                    r.type === 'fusion' ? 'bg-blue-50 border-blue-200' :
+                    r.type === 'alerte' ? 'bg-amber-50 border-amber-200' :
+                    'bg-stone-50 border-stone-200'
+                  }`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className={`text-xs font-medium ${
+                          r.type === 'fusion' ? 'text-blue-800' :
+                          r.type === 'alerte' ? 'text-amber-800' :
+                          'text-stone-800'
+                        }`}>{r.titre ?? r.message}</div>
+                        {r.detail && <div className="text-xs text-stone-500 mt-1">{r.detail}</div>}
+                      </div>
+                      {r.action && (
+                        <div className="flex gap-1.5 flex-shrink-0">
+                          <button className="text-[10px] px-2 py-1 bg-stone-900 text-white rounded hover:opacity-85 transition-all">
+                            Appliquer
+                          </button>
+                          <button className="text-[10px] px-2 py-1 border border-stone-200 text-stone-500 rounded hover:bg-stone-50 transition-all">
+                            Ignorer
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Groupes par centrale */}
           {Object.entries(grouped).map(([centrale, pals]) => {
