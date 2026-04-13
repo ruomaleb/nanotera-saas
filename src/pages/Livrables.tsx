@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useOpContext } from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import { apiDownload, triggerDownload } from '../lib/api'
 import { FileText, FileSpreadsheet, Download, Loader2, Check, Clock, AlertCircle } from 'lucide-react'
@@ -42,6 +43,9 @@ const DESCRIPTIONS: Record<string, (op: any) => string> = {
 
 export default function Livrables() {
   const navigate = useNavigate()
+  const { operationId: paramOpId } = useParams<{ operationId?: string }>()
+  const [searchParams] = useSearchParams()
+  const { currentOp, setCurrentOp } = useOpContext()
   const [operations, setOperations] = useState<any[]>([])
   const [selectedOp, setSelectedOp] = useState('')
   const [op, setOp] = useState<any>(null)
@@ -56,7 +60,13 @@ export default function Livrables() {
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         setOperations(data ?? [])
-        if (data?.[0]) setSelectedOp(data[0].id)
+        // Priorité : paramètre URL > query string > op active sidebar > première de la liste
+        const targetId = paramOpId
+          || searchParams.get('op')
+          || currentOp?.id
+        const match = targetId && data?.find((o: any) => o.id === targetId)
+        const preselect = match ? match.id : data?.[0]?.id ?? ''
+        if (preselect) setSelectedOp(preselect)
         setLoading(false)
       })
   }, [])
@@ -64,6 +74,7 @@ export default function Livrables() {
   useEffect(() => {
     const found = operations.find(o => o.id === selectedOp)
     setOp(found ?? null)
+    if (found) setCurrentOp({ id: found.id, code: found.code_operation, nom: found.nom_operation ?? '', statut: found.statut })
     if (found) {
       const hasPal = (found.nb_palettes ?? 0) > 0
       setLivrables(LIVRABLES_CONFIG.map(l => ({
