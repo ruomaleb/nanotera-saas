@@ -258,51 +258,70 @@ export default function OperationDetail() {
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="border border-gray-200 rounded-xl p-4">
-          <h3 className="font-medium text-sm mb-3">Actions</h3>
-          <div className="grid grid-cols-4 gap-3">
-            <button
-              onClick={() => navigate('/import')}
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
-            >
-              <Upload size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Importer</div>
-                <div className="text-[10px] text-gray-400">Fichier repartition</div>
+        {/* Prochaine étape — CTA unique contextuel */}
+        {(() => {
+          const s = op.statut
+          const cfg: Record<string, {
+            label: string; sub: string; onClick: () => void;
+            secondary?: { label: string; onClick: () => void }[]
+          }> = {
+            planifie: {
+              label: 'Importer le fichier de répartition',
+              sub: 'Déposer le fichier .xls du client pour lancer l'analyse',
+              onClick: () => { setCurrentOp({id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut}); navigate('/import') },
+            },
+            import: {
+              label: 'Voir l'analyse',
+              sub: 'Consulter les résultats des contrôles qualité',
+              onClick: () => navigate('/analyse'),
+            },
+            analyse: {
+              label: 'Lancer la palettisation',
+              sub: palCount > 0 ? `${palCount} palettes déjà calculées — recalculer ou consulter` : 'Calculer la composition des palettes à partir des données importées',
+              onClick: () => navigate(`/palettisation/${op.id}`),
+              secondary: [{ label: 'Revoir l'analyse', onClick: () => navigate('/analyse') }],
+            },
+            palettisation: {
+              label: 'Voir la palettisation',
+              sub: `${palCount} palettes calculées — éditer ou générer les livrables`,
+              onClick: () => navigate(`/palettisation/${op.id}`),
+              secondary: [{ label: 'Générer les livrables', onClick: () => navigate(`/livrables/${op.id}`) }],
+            },
+            livrables: {
+              label: 'Voir les livrables',
+              sub: 'Fiches palettes, bons de livraison, étiquettes cartons',
+              onClick: () => navigate(`/livrables/${op.id}`),
+              secondary: [{ label: 'Voir la palettisation', onClick: () => navigate(`/palettisation/${op.id}`) }],
+            },
+            termine: {
+              label: 'Opération terminée',
+              sub: 'Tous les livrables ont été générés',
+              onClick: () => navigate(`/livrables/${op.id}`),
+            },
+          }
+          const step = cfg[s] ?? cfg.planifie
+          return (
+            <div className="border border-gray-200 rounded-xl p-4 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-xs text-gray-400 mb-0.5">Prochaine étape</div>
+                <div className="text-sm font-medium text-gray-900">{step.label}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{step.sub}</div>
               </div>
-            </button>
-            <button
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
-            >
-              <Search size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Analyser</div>
-                <div className="text-[10px] text-gray-400">Controles qualite</div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {step.secondary?.map(sec => (
+                  <button key={sec.label} onClick={sec.onClick}
+                    className="px-3 py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap">
+                    {sec.label}
+                  </button>
+                ))}
+                <button onClick={step.onClick}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:opacity-85 transition-all whitespace-nowrap">
+                  {step.label} <ArrowRight size={14} />
+                </button>
               </div>
-            </button>
-            <button
-              onClick={() => navigate(`/palettisation/${op.id}`)}
-              disabled={palCount === 0}
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors disabled:opacity-40"
-            >
-              <BoxesIcon size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Palettisation</div>
-                <div className="text-[10px] text-gray-400">{palCount > 0 ? `${palCount} palettes` : 'Pas encore'}</div>
-              </div>
-            </button>
-            <button
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
-            >
-              <FileOutput size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Livrables</div>
-                <div className="text-[10px] text-gray-400">Fiches, BL, etiquettes</div>
-              </div>
-            </button>
-          </div>
-        </div>
+            </div>
+          )
+        })()}
 
         {op.notes && (
           <div className="mt-4 border border-gray-200 rounded-xl p-4">
