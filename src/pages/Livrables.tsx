@@ -1,10 +1,10 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { apiDownload, triggerDownload } from '../lib/api'
 import {
   FileText, FileSpreadsheet, Download, Loader2, Check,
-  Clock, AlertCircle, Eye, X, ChevronLeft, ChevronRight,
+  Clock, AlertCircle, Eye, X, ChevronLeft, ChevronRight, Search,
 } from 'lucide-react'
 import { useOpContext } from '../components/Layout'
 
@@ -67,7 +67,39 @@ function PreviewPanel({
 }) {
   const docxRef               = useRef<HTMLDivElement>(null)
   const [xlsxSheets, setXlsxSheets] = useState<any[]>([])
+  const [filterText, setFilterText] = useState('')
   const [loading, setLoading]     = useState(false)
+
+  // Filtrage dynamique des lignes xlsx
+  const filteredSheets = useMemo(() => {
+    if (!filterText.trim() || !xlsxSheets.length) return xlsxSheets
+    const q = filterText.toLowerCase()
+    return xlsxSheets.map(sheet => {
+      const rows: Record<string, any> = sheet.rows ?? {}
+      const header = rows[0]  // ligne 0 = en-têtes, toujours conservée
+      const filtered: Record<string, any> = header ? { 0: header } : {}
+      let idx = 1
+      Object.entries(rows).forEach(([key, row]: [string, any]) => {
+        if (key === '0') return
+        const text = Object.values(row?.cells ?? {})
+          .map((c: any) => String(c?.text ?? '').toLowerCase()).join(' ')
+        if (text.includes(q)) filtered[idx++] = row
+      })
+      return { ...sheet, rows: filtered }
+    })
+  }, [xlsxSheets, filterText])
+
+  const totalRows = useMemo(() => {
+    if (!xlsxSheets.length) return 0
+    const rows = xlsxSheets[0]?.rows ?? {}
+    return Math.max(0, Object.keys(rows).length - 1)  // -1 pour l'en-tête
+  }, [xlsxSheets])
+
+  const filteredRows = useMemo(() => {
+    if (!filteredSheets.length) return 0
+    const rows = filteredSheets[0]?.rows ?? {}
+    return Math.max(0, Object.keys(rows).length - 1)
+  }, [filteredSheets])
   const [generating, setGenerating] = useState(false)
   const [error, setError]         = useState('')
 
@@ -113,7 +145,7 @@ function PreviewPanel({
 
   // Déclencher le bon rendu quand le livrable change
   useEffect(() => {
-    setXlsxSheets([]); setError('')
+    setXlsxSheets([]); setError(''); setFilterText('')
     if (livrable.status !== 'done' || !livrable.blob) return
     if (livrable.type === 'docx') renderDocx(livrable.blob)
     else renderXlsx(livrable.blob)
@@ -149,6 +181,32 @@ function PreviewPanel({
             <span className="text-sm font-medium text-stone-900 truncate">{livrable.label}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 flex-shrink-0">.{livrable.type}</span>
           </div>
+
+          {/* Barre de filtre — xlsx uniquement */}
+          {livrable.type === 'xlsx' && xlsxSheets.length > 0 && (
+            <div className="flex items-center gap-2 flex-1 mx-4">
+              <div className="relative flex-1 max-w-xs">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  type="text"
+                  value={filterText}
+                  onChange={e => setFilterText(e.target.value)}
+                  placeholder="Filtrer les lignes…"
+                  className="w-full pl-7 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg outline-none focus:border-brand-400 font-[inherit]"
+                />
+              </div>
+              <span className="text-[10px] text-stone-400 whitespace-nowrap flex-shrink-0">
+                {filterText ? `${filteredRows} / ${totalRows}` : `${totalRows} lignes`}
+              </span>
+              {filterText && (
+                <button onClick={() => setFilterText('')}
+                  className="text-[10px] text-stone-400 hover:text-stone-600 px-1.5 py-1 rounded hover:bg-stone-100 transition-colors flex-shrink-0">
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-1 flex-shrink-0">
             {isReady && (
               <button onClick={() => livrable.blob && triggerDownload(livrable.blob, livrable.filename ?? livrable.label)}
@@ -211,7 +269,7 @@ function PreviewPanel({
           {livrable.type === 'xlsx' && xlsxSheets.length > 0 && !error && (
             <div style={{ height: '100%', width: '100%', background: '#fff' }}>
               <Workbook
-                data={xlsxSheets}
+                data={filteredSheets}
                 showToolbar={false}
                 showFormulaBar={false}
                 showSheetTabs={true}
