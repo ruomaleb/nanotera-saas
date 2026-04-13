@@ -52,7 +52,6 @@ import { renderAsync } from 'docx-preview'
 import * as XLSX from 'xlsx'
 import Spreadsheet from 'x-data-spreadsheet'
 import 'x-data-spreadsheet/dist/xspreadsheet.css'
-import 'docx-preview/dist/docx-preview.min.css'
 
 // Convertit un workbook SheetJS au format x-spreadsheet
 function stox(wb: XLSX.WorkBook) {
