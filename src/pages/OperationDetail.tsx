@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Upload, Search, BoxesIcon, FileOutput, Pencil, Trash2, ChevronRight, FileSpreadsheet, Calendar, Hash } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Upload, Search, BoxesIcon, FileOutput, Pencil, Trash2, ChevronRight, FileSpreadsheet } from 'lucide-react'
 import { useOpContext } from '../components/Layout'
 import type { Operation, Palette } from '../types/database'
 
@@ -110,7 +110,7 @@ export default function OperationDetail() {
 
   const handleDelete = async () => {
     if (!op || !confirm(`Supprimer l'operation ${op.code_operation} ? Cette action est irreversible.`)) return
-    await supabase.from("ops_palettes').delete().eq('operation_id', op.id)
+    await supabase.from('ops_palettes').delete().eq('operation_id', op.id)
     await supabase.from('ops_operations').delete().eq('id', op.id)
     navigate('/operations')
   }
@@ -150,8 +150,6 @@ export default function OperationDetail() {
       </div>
 
       <div className="max-w-4xl mx-auto px-5 py-6">
-
-
         {/* Stats */}
         <div className="grid grid-cols-5 gap-3 mb-6">
           <StatCard label="Magasins" value={op.nb_magasins} />
@@ -174,10 +172,9 @@ export default function OperationDetail() {
             </div>
           </div>
 
-          {/* Specs document */}
           <div className="border border-gray-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-sm">Spécifications</h3>
+              <h3 className="font-medium text-sm">Specifications</h3>
               {!editing
                 ? <button onClick={() => { if(op) initEditFields(op); setEditing(true) }} className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700"><Pencil size={10} /> Modifier</button>
                 : <div className="flex gap-2">
@@ -187,56 +184,23 @@ export default function OperationDetail() {
               }
             </div>
             {!editing ? (
-              <div className="space-y-3 text-xs">
-                <div>
-                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-1.5">Document</div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
-                    {[
-                      ['Pagination', op.pagination ? `${op.pagination} pages` : null],
-                      ['Format', (op as any).format_devise || op.format_document],
-                      ['Grammage', op.grammage ? `${op.grammage} g/m²` : null],
-                      ['Façonnage', (op as any).faconnage],
-                      ['Brochage', (op as any).brochage],
-                      ['Type encre', (op as any).type_encre],
-                      ['Profil ICC', (op as any).profil_icc],
-                      ['Repiquages noir', (op as any).nb_repiquages_noir != null ? `${(op as any).nb_repiquages_noir}` : null],
-                      ['Repiquages quadri', (op as any).nb_repiquages_quadri != null ? `${(op as any).nb_repiquages_quadri}` : null],
-                      ['Pays impression', (op as any).pays_impression],
-                    ].map(([label, value]) => value != null ? (
-                      <div key={label as string} className="flex justify-between">
-                        <span className="text-gray-400">{label}</span>
-                        <span className="font-medium text-gray-900">{value as string}</span>
-                      </div>
-                    ) : null)}
+              <>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between"><span className="text-gray-500">Pagination</span><span className="font-medium">{op.pagination ? `${op.pagination} pages` : '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Format</span><span className="font-medium">{op.format_document ?? '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Grammage</span><span className="font-medium">{op.grammage ? `${op.grammage} g/m2` : '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Poids unitaire</span><span className="font-medium">{op.poids_unitaire_kg ? `${op.poids_unitaire_kg} kg/ex` : '—'}</span></div>
+                </div>
+                <div className="border-t border-gray-200 mt-3 pt-3">
+                  <h4 className="text-[11px] text-gray-500 mb-2">Conditionnement</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex justify-between"><span className="text-gray-500">Ex/paquet</span><span className="font-medium">{op.ex_par_paquet ?? '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Ex/carton</span><span className="font-medium">{op.ex_par_carton ?? '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Crt/palette</span><span className="font-medium">{op.cartons_par_palette ?? '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Seuil PDV</span><span className="font-medium">{op.seuil_pdv?.toLocaleString() ?? '—'}</span></div>
                   </div>
                 </div>
-                <div className="border-t border-gray-100 pt-3">
-                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide mb-1.5">Conditionnement</div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
-                    {[
-                      ['Ex/paquet', op.ex_par_paquet],
-                      ['Ex/carton', op.ex_par_carton],
-                      ['Cartons/palette', op.cartons_par_palette],
-                      ['Seuil PDV', op.seuil_pdv?.toLocaleString('fr-FR')],
-                      ['Poids/ex', op.poids_unitaire_kg ? `${op.poids_unitaire_kg} kg` : null],
-                    ].map(([label, value]) => (
-                      <div key={label as string} className="flex justify-between">
-                        <span className="text-gray-400">{label}</span>
-                        <span className={`font-medium ${value ? 'text-gray-900' : 'text-amber-500'}`}>{value ?? '⚠ —'}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {(op as any).nom_fichier_import && (
-                  <div className="border-t border-gray-100 pt-3 flex items-center gap-2 text-[10px] text-gray-400">
-                    <FileSpreadsheet size={11} />
-                    <span>{(op as any).nom_fichier_import}</span>
-                    {(op as any).date_import && (
-                      <span>· importé le {new Date((op as any).date_import).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                    )}
-                  </div>
-                )}
-              </div>
+              </>
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-2">
@@ -245,7 +209,7 @@ export default function OperationDetail() {
                   <EditField label="Grammage" value={editFields.grammage} onChange={v => setEditFields(p => ({...p, grammage: v}))} type="number" />
                 </div>
                 <div className="border-t border-gray-200 pt-3">
-                  <div className="text-[10px] text-gray-500 mb-2">Conditionnement</div>
+                  <h4 className="text-[11px] text-gray-500 mb-2">Conditionnement</h4>
                   <div className="grid grid-cols-2 gap-2">
                     <EditField label="Ex/paquet" value={editFields.ex_par_paquet} onChange={v => setEditFields(p => ({...p, ex_par_paquet: v}))} type="number" />
                     <EditField label="Ex/carton" value={editFields.ex_par_carton} onChange={v => setEditFields(p => ({...p, ex_par_carton: v}))} type="number" />
@@ -258,70 +222,51 @@ export default function OperationDetail() {
           </div>
         </div>
 
-        {/* Prochaine étape — CTA unique contextuel */}
-        {(() => {
-          const s = op.statut
-          const cfg: Record<string, {
-            label: string; sub: string; onClick: () => void;
-            secondary?: { label: string; onClick: () => void }[]
-          }> = {
-            planifie: {
-              label: 'Importer le fichier de répartition",
-              sub: "Déposer le fichier .xls du client pour lancer l'analyse",
-              onClick: () => { setCurrentOp({id: op.id, code: op.code_operation, nom: op.nom_operation ?? "', statut: op.statut}); navigate('/import") },
-            },
-            import: {
-              label: "Voir l'analyse",
-              sub: "Consulter les résultats des contrôles qualité',
-              onClick: () => navigate('/analyse'),
-            },
-            analyse: {
-              label: 'Lancer la palettisation',
-              sub: palCount > 0 ? `${palCount} palettes déjà calculées — recalculer ou consulter` : 'Calculer la composition des palettes à partir des données importées",
-              onClick: () => navigate(`/palettisation/${op.id}`),
-              secondary: [{ label: "Revoir l'analyse", onClick: () => navigate("/analyse') }],
-            },
-            palettisation: {
-              label: 'Voir la palettisation',
-              sub: `${palCount} palettes calculées — éditer ou générer les livrables`,
-              onClick: () => navigate(`/palettisation/${op.id}`),
-              secondary: [{ label: 'Générer les livrables', onClick: () => navigate(`/livrables/${op.id}`) }],
-            },
-            livrables: {
-              label: 'Voir les livrables',
-              sub: 'Fiches palettes, bons de livraison, étiquettes cartons',
-              onClick: () => navigate(`/livrables/${op.id}`),
-              secondary: [{ label: 'Voir la palettisation', onClick: () => navigate(`/palettisation/${op.id}`) }],
-            },
-            termine: {
-              label: "Opération terminée",
-              sub: "Tous les livrables ont été générés",
-              onClick: () => navigate(`/livrables/${op.id}`),
-            },
-          }
-          const step = cfg[s] ?? cfg.planifie
-          return (
-            <div className="border border-gray-200 rounded-xl p-4 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-xs text-gray-400 mb-0.5">Prochaine étape</div>
-                <div className="text-sm font-medium text-gray-900">{step.label}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{step.sub}</div>
+        {/* Action buttons */}
+        <div className="border border-gray-200 rounded-xl p-4">
+          <h3 className="font-medium text-sm mb-3">Actions</h3>
+          <div className="grid grid-cols-4 gap-3">
+            <button
+              onClick={() => navigate('/import')}
+              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
+            >
+              <Upload size={16} className="text-gray-400" />
+              <div className="text-left">
+                <div className="font-medium">Importer</div>
+                <div className="text-[10px] text-gray-400">Fichier repartition</div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {step.secondary?.map(sec => (
-                  <button key={sec.label} onClick={sec.onClick}
-                    className="px-3 py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap">
-                    {sec.label}
-                  </button>
-                ))}
-                <button onClick={step.onClick}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:opacity-85 transition-all whitespace-nowrap">
-                  {step.label} <ArrowRight size={14} />
-                </button>
+            </button>
+            <button
+              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
+            >
+              <Search size={16} className="text-gray-400" />
+              <div className="text-left">
+                <div className="font-medium">Analyser</div>
+                <div className="text-[10px] text-gray-400">Controles qualite</div>
               </div>
-            </div>
-          )
-        })()}
+            </button>
+            <button
+              onClick={() => navigate(`/palettisation/${op.id}`)}
+              disabled={palCount === 0}
+              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors disabled:opacity-40"
+            >
+              <BoxesIcon size={16} className="text-gray-400" />
+              <div className="text-left">
+                <div className="font-medium">Palettisation</div>
+                <div className="text-[10px] text-gray-400">{palCount > 0 ? `${palCount} palettes` : 'Pas encore'}</div>
+              </div>
+            </button>
+            <button
+              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
+            >
+              <FileOutput size={16} className="text-gray-400" />
+              <div className="text-left">
+                <div className="font-medium">Livrables</div>
+                <div className="text-[10px] text-gray-400">Fiches, BL, etiquettes</div>
+              </div>
+            </button>
+          </div>
+        </div>
 
         {op.notes && (
           <div className="mt-4 border border-gray-200 rounded-xl p-4">
