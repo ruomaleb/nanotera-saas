@@ -523,16 +523,20 @@ export default function Palettisation() {
                         }`}>{r.titre ?? r.message}</div>
                         {r.detail && <div className="text-xs text-stone-500 mt-1">{r.detail}</div>}
                       </div>
-                      {r.action && (
-                        <div className="flex gap-1.5 flex-shrink-0">
-                          <button className="text-[10px] px-2 py-1 bg-stone-900 text-white rounded hover:opacity-85 transition-all">
-                            Appliquer
+                      <div className="flex gap-1.5 flex-shrink-0 mt-1">
+                        {r.action && (
+                          <button
+                            onClick={() => { setMode('edit'); setShowAiPanel(false) }}
+                            className="text-[10px] px-2 py-1 bg-stone-900 text-white rounded hover:opacity-85 transition-all whitespace-nowrap">
+                            Appliquer dans l'éditeur
                           </button>
-                          <button className="text-[10px] px-2 py-1 border border-stone-200 text-stone-500 rounded hover:bg-stone-50 transition-all">
-                            Ignorer
-                          </button>
-                        </div>
-                      )}
+                        )}
+                        <button
+                          onClick={() => setAiRecos(prev => prev.filter((_: any, j: number) => j !== i))}
+                          className="text-[10px] px-2 py-1 border border-stone-200 text-stone-400 rounded hover:bg-stone-50 transition-all">
+                          Ignorer
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
