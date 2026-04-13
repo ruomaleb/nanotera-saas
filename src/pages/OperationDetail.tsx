@@ -103,7 +103,7 @@ export default function OperationDetail() {
       cartons_par_palette: editFields.cartons_par_palette ? parseInt(editFields.cartons_par_palette) : null,
       seuil_pdv: editFields.seuil_pdv ? parseInt(editFields.seuil_pdv) : null,
     }
-    await supabase.from('ops_operations').update(update).eq('id", op.id)
+    await supabase.from('ops_operations').update(update).eq('id', op.id)
     setOp({ ...op, ...update })
     setEditing(false)
   }
