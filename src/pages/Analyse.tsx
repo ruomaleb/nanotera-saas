@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { CheckCircle2, AlertTriangle, XCircle, ArrowRight, FileSpreadsheet, ChevronDown, ChevronRight } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, ArrowRight, FileSpreadsheet, ChevronDown, ChevronRight, Settings, RefreshCw } from 'lucide-react'
+import { useOpContext } from '../components/Layout'
 import type { Operation } from '../types/database'
 
 interface QualityCheck {
@@ -53,78 +54,11 @@ function StatusIcon({ status }: { status: string }) {
   return <XCircle size={14} className="text-red-500 flex-shrink-0" />
 }
 
-
-function IssueRow({ issue, index }: { issue: any; index: number }) {
-  if (typeof issue === 'string') {
-    return (
-      <div className="flex items-start gap-2 py-2 border-b border-stone-100 last:border-0 text-xs">
-        <span className="text-stone-400 font-mono w-5 flex-shrink-0 pt-0.5">{index + 1}</span>
-        <span className="text-stone-700">{issue}</span>
-      </div>
-    )
-  }
-
-  // Extract the most useful fields
-  const code    = issue.code_pdv || issue.code || issue.id
-  const nom     = issue.nom_pdv  || issue.nom  || issue.name
-  const ville   = issue.ville
-  const qte     = issue.quantite ?? issue.quantite_source ?? issue.qty
-  const note    = issue.note     || issue.message || issue.detail
-  const type    = issue.type     || issue.error_type
-  const central = issue.regroupement || issue.centrale
-
-  return (
-    <div className="flex items-start gap-2 py-2.5 border-b border-stone-100 last:border-0 text-xs">
-      <span className="text-stone-300 font-mono w-5 flex-shrink-0 pt-0.5">{index + 1}</span>
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <div className="flex items-center gap-2 flex-wrap">
-          {code && <span className="font-mono text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded text-[10px]">{code}</span>}
-          {nom  && <span className="font-medium text-stone-800 truncate">{nom}</span>}
-          {ville && <span className="text-stone-400">{ville}</span>}
-          {central && <span className="text-stone-400 text-[10px] bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded">{central}</span>}
-        </div>
-        {note && <div className="text-stone-500 leading-relaxed">{note}</div>}
-        {type && !note && <div className="text-stone-400 italic">{type}</div>}
-        {qte !== undefined && (
-          <div className="text-stone-400">
-            Quantité : <span className="font-mono font-medium text-stone-600">{Number(qte).toLocaleString('fr-FR')}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function IssueList({ issues }: { issues: any[] }) {
-  const [showAll, setShowAll] = useState(false)
-  const MAX = 5
-  const visible = showAll ? issues : issues.slice(0, MAX)
-
-  return (
-    <div className="mt-2 bg-stone-50 rounded-lg border border-stone-200 overflow-hidden">
-      <div className="px-3 py-2 border-b border-stone-200 flex items-center justify-between">
-        <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">
-          {issues.length} anomalie{issues.length > 1 ? 's' : ''}
-        </span>
-      </div>
-      <div className="px-3">
-        {visible.map((issue, i) => <IssueRow key={i} issue={issue} index={i} />)}
-      </div>
-      {issues.length > MAX && (
-        <button
-          onClick={e => { e.stopPropagation(); setShowAll(s => !s) }}
-          className="w-full py-2 text-[11px] text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors border-t border-stone-200"
-        >
-          {showAll ? 'Réduire' : `Voir les ${issues.length - MAX} suivantes`}
-        </button>
-      )}
-    </div>
-  )
-}
-
 export default function Analyse() {
   const navigate = useNavigate()
+  const { currentOp, setCurrentOp } = useOpContext()
   const [operations, setOperations] = useState<any[]>([])
+  const [showParamsPanel, setShowParamsPanel] = useState(false)
   const [selectedOp, setSelectedOp] = useState('')
   const [op, setOp] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -138,7 +72,12 @@ export default function Analyse() {
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         setOperations(data ?? [])
-        if (data?.[0]) { setSelectedOp(data[0].id); setOp(data[0]) }
+        // Pré-sélectionner l'opération active de la sidebar
+        const activeId = currentOp?.id
+        const preselect = activeId && data?.find((o: any) => o.id === activeId)
+          ? activeId
+          : data?.[0]?.id ?? ''
+        if (preselect) { setSelectedOp(preselect); setOp(data?.find((o: any) => o.id === preselect) ?? null) }
         setLoading(false)
       })
   }, [])
@@ -148,6 +87,11 @@ export default function Analyse() {
     setOp(found ?? null)
     setExpandedCheck(null)
   }, [selectedOp, operations])
+
+  // Sync sidebar quand l'op change
+  useEffect(() => {
+    if (op) setCurrentOp({ id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut })
+  }, [op?.id])
 
   const rapport: QualityReport = op?.rapport_controles || {}
   const verdict = rapport.verdict || 'ok'
@@ -287,8 +231,11 @@ export default function Analyse() {
                       )}
                     </div>
                     {isExpanded && c.issues && c.issues.length > 0 && (
-                      <div className="px-4 pb-3 pt-1">
-                        <IssueList issues={c.issues} />
+                      <div className="px-4 pb-3 pt-1 bg-gray-50/30">
+                        <div className="text-[10px] text-gray-400 mb-1">Premieres anomalies :</div>
+                        <pre className="text-[10px] bg-white border border-gray-200 rounded p-2 overflow-x-auto max-h-40 text-gray-600">
+                          {JSON.stringify(c.issues.slice(0, 5), null, 2)}
+                        </pre>
                       </div>
                     )}
                   </div>
