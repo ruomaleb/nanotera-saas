@@ -323,19 +323,6 @@ export default function Palettisation() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {palettes.length > 0 && (
-            <button
-              onClick={() => setMode(m => m === 'edit' ? 'view' : 'edit')}
-              className={`flex items-center gap-1.5 h-8 px-3 text-xs rounded-lg border transition-colors ${
-                mode === 'edit'
-                  ? 'bg-gray-900 text-white border-transparent'
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              <Pencil size={12} />
-              {mode === 'edit' ? 'Terminer l\'édition' : 'Éditer les palettes'}
-            </button>
-          )}
           <select
             value={selectedOp}
             onChange={e => { setSelectedOp(e.target.value); navigate(`/palettisation/${e.target.value}`) }}
@@ -449,16 +436,29 @@ export default function Palettisation() {
 
           {/* Actions */}
           <div className="grid grid-cols-4 gap-3">
-            <button
-              onClick={() => setMode('edit')}
-              className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
-            >
-              <Pencil size={16} className="text-stone-400" />
-              <div>
-                <div className="text-sm font-medium text-stone-800">Éditer les palettes</div>
-                <div className="text-xs text-stone-400 mt-0.5">Déplacer des magasins, fusionner</div>
-              </div>
-            </button>
+            {mode === 'edit' ? (
+              <button
+                onClick={() => setMode('view')}
+                className="flex flex-col items-start gap-2 p-4 border border-stone-900 rounded-xl bg-stone-900 hover:opacity-85 transition-all text-left"
+              >
+                <Pencil size={16} className="text-white opacity-70" />
+                <div>
+                  <div className="text-sm font-medium text-white">Terminer l'édition</div>
+                  <div className="text-xs text-white opacity-50 mt-0.5">Revenir à la vue</div>
+                </div>
+              </button>
+            ) : (
+              <button
+                onClick={() => setMode('edit')}
+                className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
+              >
+                <Pencil size={16} className="text-stone-400" />
+                <div>
+                  <div className="text-sm font-medium text-stone-800">Éditer les palettes</div>
+                  <div className="text-xs text-stone-400 mt-0.5">Déplacer des magasins, fusionner</div>
+                </div>
+              </button>
+            )}
 
             <button
               onClick={() => { setShowAiPanel(p => !p); if (!showAiPanel && aiRecos.length === 0) handleAiAnalyse() }}
