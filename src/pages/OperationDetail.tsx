@@ -267,7 +267,7 @@ export default function OperationDetail() {
           }> = {
             planifie: {
               label: 'Importer le fichier de répartition',
-              sub: 'Déposer le fichier .xls du client pour lancer l'analyse',
+              sub: "Déposer le fichier .xls du client pour lancer l'analyse",
               onClick: () => { setCurrentOp({id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut}); navigate('/import') },
             },
             import: {
@@ -295,7 +295,7 @@ export default function OperationDetail() {
             },
             termine: {
               label: 'Opération terminée',
-              sub: 'Tous les livrables ont été générés',
+              sub: "Tous les livrables ont été générés",
               onClick: () => navigate(`/livrables/${op.id}`),
             },
           }
