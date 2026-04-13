@@ -47,6 +47,8 @@ export default function Import() {
     if (!selectedOp) { setLastImportInfo(null); return }
     const op = operations.find(o => o.id === selectedOp)
     if (!op) return
+    // Sync sidebar immédiatement dès que l'opération change
+    setCurrentOp({ id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut })
     const alreadyImported = ['analyse', 'palettisation', 'livrables'].includes(op.statut)
     if (alreadyImported) {
       setLastImportInfo({
