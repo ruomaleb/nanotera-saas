@@ -258,7 +258,13 @@ export default function Livrables() {
     const found = operations.find(o => o.id === selectedOp)
     setOp(found ?? null)
     if (found) {
-      setCurrentOp({ id: found.id, code: found.code_operation, nom: found.nom_operation ?? '', statut: found.statut })
+      // Avancer le statut à 'livrables' si l'op est encore en 'palettisation'
+      let statut = found.statut
+      if (statut === 'palettisation') {
+        statut = 'livrables'
+        supabase.from('ops_operations').update({ statut: 'livrables' }).eq('id', found.id).then(() => {})
+      }
+      setCurrentOp({ id: found.id, code: found.code_operation, nom: found.nom_operation ?? '', statut })
       const hasPal = (found.nb_palettes ?? 0) > 0
       setLivrables(LIVRABLES_CONFIG.map(l => ({
         ...l,
