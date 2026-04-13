@@ -76,9 +76,9 @@ export default function Dashboard() {
             <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>Voici comment traiter votre première opération en 4 étapes</div>
           </div>
           {[
-            { n: '1', title: 'Créer une opération', desc: 'Renseignez le code, l'enseigne, les specs du document et le conditionnement souhaité.', action: () => navigate('/operations/new'), cta: 'Nouvelle opération' },
-            { n: '2', title: 'Importer le fichier de répartition', desc: 'Déposez le fichier .xls multi-onglets du client (1 onglet = 1 centrale). L'analyse est automatique.', action: () => navigate('/import'), cta: 'Aller à l'import' },
-            { n: '3', title: 'Vérifier l'analyse et lancer la palettisation', desc: 'Contrôlez les anomalies, vérifiez les paramètres, puis lancez la composition des palettes.', action: null, cta: null },
+            { n: '1', title: 'Créer une opération', desc: 'Renseignez le code, l\'enseigne, les specs du document et le conditionnement souhaité.', action: () => navigate('/operations/new'), cta: 'Nouvelle opération' },
+            { n: '2', title: 'Importer le fichier de répartition', desc: 'Déposez le fichier .xls multi-onglets du client (1 onglet = 1 centrale). L\'analyse est automatique.', action: () => navigate('/import'), cta: 'Aller à l\'import' },
+            { n: '3', title: 'Vérifier l\'analyse et lancer la palettisation', desc: 'Contrôlez les anomalies, vérifiez les paramètres, puis lancez la composition des palettes.', action: null, cta: null },
             { n: '4', title: 'Générer les livrables', desc: 'Fiches palettes, bons de livraison et base étiquettes cartons en un clic.', action: null, cta: null },
           ].map(step => (
             <div key={step.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 20px', borderBottom: '1px solid #F0EDE8' }}>
