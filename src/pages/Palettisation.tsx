@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
-import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
+import { Boxes, Loader2, Play, AlertCircle, ArrowRight, Pencil, ChevronDown, ChevronRight, RefreshCw, FileOutput, Sparkles } from 'lucide-react'
 import PaletteEditor from '../components/PaletteEditor'
 import PaletteAlerts from '../components/PaletteAlerts'
 import AutoParams, { ParamsValues } from '../components/AutoParams'
@@ -400,24 +400,63 @@ export default function Palettisation() {
             onRelancer={handleRunBinpacking}
           />
 
-          {/* Relancer */}
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={handleRunBinpacking}
-              disabled={running}
-              className="text-[11px] text-gray-500 hover:text-gray-700 px-2 py-1 hover:bg-gray-100 rounded transition-colors flex items-center gap-1"
-            >
-              {running
-                ? <><Loader2 size={11} className="animate-spin" /> Recalcul...</>
-                : 'Relancer le bin-packing'}
-            </button>
-          </div>
-
           {error && (
             <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
               <AlertCircle size={14} className="flex-shrink-0 mt-0.5" /> <span>{error}</span>
             </div>
           )}
+
+          {/* Actions */}
+          <div className="grid grid-cols-4 gap-3">
+            <button
+              onClick={() => setMode('editor')}
+              className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
+            >
+              <Pencil size={16} className="text-stone-400" />
+              <div>
+                <div className="text-sm font-medium text-stone-800">Éditer les palettes</div>
+                <div className="text-xs text-stone-400 mt-0.5">Déplacer des magasins, fusionner</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => navigate('/analyse')}
+              className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left"
+            >
+              <Sparkles size={16} className="text-stone-400" />
+              <div>
+                <div className="text-sm font-medium text-stone-800">Analyser le plan</div>
+                <div className="text-xs text-stone-400 mt-0.5">Anomalies, optimisations IA</div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleRunBinpacking}
+              disabled={running}
+              className="flex flex-col items-start gap-2 p-4 border border-stone-200 rounded-xl bg-white hover:border-stone-300 hover:bg-stone-50 transition-all text-left disabled:opacity-50"
+            >
+              {running
+                ? <Loader2 size={16} className="text-stone-400 animate-spin" />
+                : <RefreshCw size={16} className="text-stone-400" />}
+              <div>
+                <div className="text-sm font-medium text-stone-800">
+                  {running ? 'Calcul en cours…' : 'Relancer le bin-packing'}
+                </div>
+                <div className="text-xs text-stone-400 mt-0.5">Recalculer toutes les palettes</div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => navigate(`/livrables/${op.id}`)}
+              className="flex flex-col items-start gap-2 p-4 border border-stone-900 rounded-xl bg-stone-900 hover:opacity-85 transition-all text-left"
+            >
+              <FileOutput size={16} className="text-white opacity-70" />
+              <div>
+                <div className="text-sm font-medium text-white">Générer les livrables</div>
+                <div className="text-xs text-white opacity-50 mt-0.5">Fiches, BL, étiquettes</div>
+              </div>
+            </button>
+          </div>
 
           {/* Groupes par centrale */}
           {Object.entries(grouped).map(([centrale, pals]) => {
