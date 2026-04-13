@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { apiDownload, triggerDownload } from '../lib/api'
@@ -150,7 +150,6 @@ function PreviewPanel({
   const [html, setHtml]       = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
-  const iframeRef             = useRef<HTMLIFrameElement>(null)
 
   const loadPreview = async (l: Livrable) => {
     if (!l.blob) return
@@ -174,13 +173,6 @@ function PreviewPanel({
       setError('')
     }
   }, [livrable.id, livrable.blob])
-
-  useEffect(() => {
-    if (html && iframeRef.current) {
-      const doc = iframeRef.current.contentDocument
-      if (doc) { doc.open(); doc.write(html); doc.close() }
-    }
-  }, [html])
 
   const handleGenerate = async () => {
     setLoading(true)
@@ -257,9 +249,9 @@ function PreviewPanel({
             </div>
           ) : (
             <iframe
-              ref={iframeRef}
+              srcDoc={html}
               className="w-full h-full border-0"
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-same-origin"
               title={livrable.label}
             />
           )}
