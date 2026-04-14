@@ -51,10 +51,12 @@ interface FormData {
 
   // Étape 4 — Logistique
   ex_par_paquet:        string
-  ex_par_carton:        string
+  nb_paquets_carton:    string   // nombre de paquets par carton (ex_par_carton = nb_paquets × ex_par_paquet)
+  ex_par_carton:        string   // dérivé — ne pas saisir manuellement
   cartons_par_palette:  string
   seuil_pdv:            string
-  poids_unitaire_kg:    string
+  poids_unitaire_g:     string   // override manuel en grammes (converti en kg pour Supabase)
+  poids_unitaire_kg:    string   // legacy — ne plus utiliser directement dans l'UI
   type_palette_id:      string
   notes:                string
 }
@@ -208,8 +210,10 @@ export default function NewOperation() {
     nb_repiquages_noir: '', nb_repiquages_quadri: '0',
     procede_impression: 'Offset', pays_impression: '', imprimeur_id: '',
     support_type_id: '', date_depot_fichier: '', date_livraison_maxi: '',
-    ex_par_paquet: '', ex_par_carton: '', cartons_par_palette: '', seuil_pdv: '',
-    poids_unitaire_kg: '', type_palette_id: '', notes: '',
+    ex_par_paquet: '', nb_paquets_carton: '2', ex_par_carton: '',
+    cartons_par_palette: '', seuil_pdv: '',
+    poids_unitaire_g: '', poids_unitaire_kg: '',
+    type_palette_id: '', notes: '',
   })
 
   const set = (k: keyof FormData, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
@@ -246,10 +250,15 @@ export default function NewOperation() {
         try {
           const cd = JSON.parse(gRules[0].contenu)
           if (cd.ex_paquet)         { updates.ex_par_paquet       = String(cd.ex_paquet);        newSources.ex_par_paquet       = 'Global' }
-          if (cd.ex_carton)         { updates.ex_par_carton       = String(cd.ex_carton);        newSources.ex_par_carton       = 'Global' }
+          if (cd.ex_carton)         {
+            // Dériver nb_paquets_carton depuis ex_carton et ex_paquet
+            const exPaq = cd.ex_paquet || 100
+            const nbPaq = Math.round(cd.ex_carton / exPaq)
+            if (nbPaq >= 1) { updates.nb_paquets_carton = String(nbPaq); newSources.nb_paquets_carton = 'Global' }
+          }
           if (cd.cartons_palette)   { updates.cartons_par_palette = String(cd.cartons_palette);  newSources.cartons_par_palette = 'Global' }
           if (cd.seuil_pdv)         { updates.seuil_pdv           = String(cd.seuil_pdv);        newSources.seuil_pdv           = 'Global' }
-          if (cd.poids_unitaire_kg) { updates.poids_unitaire_kg   = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg   = 'Global' }
+          // poids_unitaire_kg retiré : calculé par formule depuis pagination/grammage/format
           if (cd.grammage)          { updates.grammage            = String(cd.grammage);         newSources.grammage            = 'Global' }
         } catch {}
       }
@@ -264,10 +273,14 @@ export default function NewOperation() {
           const cd = JSON.parse(eRules[0].contenu)
           const src = ens?.nom ?? 'Enseigne'
           if (cd.ex_paquet)         { updates.ex_par_paquet       = String(cd.ex_paquet);        newSources.ex_par_paquet       = src }
-          if (cd.ex_carton)         { updates.ex_par_carton       = String(cd.ex_carton);        newSources.ex_par_carton       = src }
+          if (cd.ex_carton)         {
+            const exPaq = cd.ex_paquet || parseInt(updates.ex_par_paquet || '100')
+            const nbPaq = Math.round(cd.ex_carton / exPaq)
+            if (nbPaq >= 1) { updates.nb_paquets_carton = String(nbPaq); newSources.nb_paquets_carton = src }
+          }
           if (cd.cartons_palette)   { updates.cartons_par_palette = String(cd.cartons_palette);  newSources.cartons_par_palette = src }
           if (cd.seuil_pdv)         { updates.seuil_pdv           = String(cd.seuil_pdv);        newSources.seuil_pdv           = src }
-          if (cd.poids_unitaire_kg) { updates.poids_unitaire_kg   = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg   = src }
+          // poids_unitaire_kg retiré : calculé par formule
           if (cd.grammage)          { updates.grammage            = String(cd.grammage);         newSources.grammage            = src }
         } catch {}
       }
@@ -309,7 +322,7 @@ export default function NewOperation() {
           const updates: Partial<FormData> = {}
           const newSources: Record<string, string> = {}
           if (cd.ex_paquet)         { updates.ex_par_paquet     = String(cd.ex_paquet);        newSources.ex_par_paquet     = src }
-          if (cd.poids_unitaire_kg) { updates.poids_unitaire_kg = String(cd.poids_unitaire_kg);newSources.poids_unitaire_kg = src }
+          // poids_unitaire_kg non chargé depuis imprimeur : calculé par formule
           if (Object.keys(updates).length > 0) {
             setForm(prev => ({ ...prev, ...updates }))
             setDefaultSources(prev => ({ ...prev, ...newSources }))
@@ -338,21 +351,25 @@ export default function NewOperation() {
     return Math.round(((p / 2) * surfaceM2 * g) * 1000000) / 1000000
   })()
 
-  // Poids effectif : formule en priorité, champ manuel si formule impossible
-  // (le champ form.poids_unitaire_kg sert d'override explicite uniquement)
-  const computedPoids = computedPoidsFormule ?? (
-    form.poids_unitaire_kg ? parseFloat(form.poids_unitaire_kg) : null
-  )
+  // Poids effectif : formule en priorité, override en g si formule impossible
+  const computedPoids = computedPoidsFormule ?? overridePoidsKg
 
   // Poids en grammes pour affichage (arrondi à 0.1 g)
   const computedPoidsG = computedPoids != null
     ? Math.round(computedPoids * 10000) / 10
     : null
 
-  const exPaquet    = parseInt(form.ex_par_paquet || '100')
-  const exCarton    = parseInt(form.ex_par_carton || '200')
-  const crtPalette  = parseInt(form.cartons_par_palette || '48')
-  const seuilPdv    = parseInt(form.seuil_pdv || '2800')
+  const exPaquet     = parseInt(form.ex_par_paquet || '100')
+  const nbPaqCarton  = parseInt(form.nb_paquets_carton || '2')
+  // ex_par_carton est TOUJOURS dérivé : nb_paquets_carton × ex_par_paquet
+  const exCarton     = nbPaqCarton * exPaquet
+  // Validation : cohérence paquets/carton
+  const cartonCoherent = nbPaqCarton >= 1 && exCarton >= exPaquet
+  const crtPalette   = parseInt(form.cartons_par_palette || '48')
+  const seuilPdv     = parseInt(form.seuil_pdv || '2800')
+  // Poids override : champ saisi en GRAMMES par l'utilisateur, converti en kg
+  const overridePoidsG  = form.poids_unitaire_g ? parseFloat(form.poids_unitaire_g) : null
+  const overridePoidsKg = overridePoidsG != null ? overridePoidsG / 1000 : null
   const qteTotal    = parseInt(form.qte_estimatives || '0')
   const exPalette   = exCarton * crtPalette
   const poidsPalette = computedPoids && exPalette ? Math.round(exPalette * computedPoids) : null
@@ -452,13 +469,14 @@ export default function NewOperation() {
       date_livraison_maxi:    form.date_livraison_maxi || null,
       // Étape 4 — logistique
       ex_par_paquet:          form.ex_par_paquet ? parseInt(form.ex_par_paquet) : null,
-      ex_par_carton:          form.ex_par_carton ? parseInt(form.ex_par_carton) : null,
+      // ex_par_carton géré ci-dessus (dérivé)
       cartons_par_palette:    form.cartons_par_palette ? parseInt(form.cartons_par_palette) : null,
       seuil_pdv:              form.seuil_pdv ? parseInt(form.seuil_pdv) : null,
-      // Stocker en kg : override manuel si renseigné, sinon valeur formule
-      poids_unitaire_kg:      form.poids_unitaire_kg
-        ? parseFloat(form.poids_unitaire_kg)
-        : (computedPoidsFormule ?? null),
+      // ex_par_carton : toujours dérivé de nb_paquets_carton × ex_par_paquet
+      ex_par_carton:          exCarton || null,
+      nb_paquets_carton:      nbPaqCarton || null,
+      // poids en kg : formule en priorité, override (saisi en g) en fallback
+      poids_unitaire_kg:      computedPoidsFormule ?? overridePoidsKg ?? null,
       type_palette_id:        form.type_palette_id || null,
       notes:                  form.notes.trim() || null,
     }
@@ -944,8 +962,8 @@ export default function NewOperation() {
                     value: computedPoidsG != null ? `${computedPoidsG} g` : '—',
                     sub: computedPoidsFormule != null
                       ? `Calculé — ${form.pagination}p · ${form.grammage} g/m² · ${form.format_devise}`
-                      : form.poids_unitaire_kg
-                        ? `Override manuel — ${parseFloat(form.poids_unitaire_kg) * 1000} g`
+                      : overridePoidsG != null
+                        ? `Override manuel — ${overridePoidsG} g`
                         : 'Renseigner pagination, grammage et format',
                     ok: computedPoidsG != null,
                   },
@@ -1074,10 +1092,32 @@ export default function NewOperation() {
                   <input type="number" value={form.ex_par_paquet} onChange={e => { set('ex_par_paquet', e.target.value); set('ex_par_paquet_mode', 'custom') }}
                     className={inputCls} placeholder="100" />
                 </FieldGroup>
-                <FieldGroup label="Ex / carton" hint="Mise sous carton Frétin" source={defaultSources.ex_par_carton}>
-                  <input type="number" value={form.ex_par_carton} onChange={e => set('ex_par_carton', e.target.value)}
-                    className={inputCls} placeholder="200" />
+
+                {/* Paquets / carton → ex_par_carton calculé */}
+                <FieldGroup
+                  label="Paquets / carton"
+                  hint={`→ ${exCarton} ex/carton${!cartonCoherent ? ' ⚠ incohérent' : ''}`}
+                  source={defaultSources.nb_paquets_carton}>
+                  <input type="number" min="1" value={form.nb_paquets_carton}
+                    onChange={e => set('nb_paquets_carton', e.target.value)}
+                    className={`${inputCls} ${!cartonCoherent ? 'border-amber-400' : ''}`}
+                    placeholder="2" />
+                  {/* Alerte si ex_par_carton < ex_par_paquet */}
+                  {!cartonCoherent && (
+                    <div className="mt-1 text-[11px] text-amber-600 flex items-center gap-1">
+                      <AlertTriangle size={11} />
+                      {exCarton} ex/carton &lt; {exPaquet} ex/paquet — impossible (un carton doit contenir au moins 1 paquet entier)
+                    </div>
+                  )}
+                  {cartonCoherent && (
+                    <div className="mt-1 text-[11px] text-stone-400">
+                      = {nbPaqCarton} × {exPaquet} ex = {exCarton} ex/carton
+                      {computedPoids && ` · ${Math.round(exCarton * computedPoids * 1000) / 1000} kg/carton`}
+                      {' '}— hors poids emballage carton
+                    </div>
+                  )}
                 </FieldGroup>
+
                 <FieldGroup label="Cartons / palette (max)" source={defaultSources.cartons_par_palette}>
                   <input type="number" value={form.cartons_par_palette} onChange={e => set('cartons_par_palette', e.target.value)}
                     className={inputCls} placeholder="48" />
@@ -1086,16 +1126,18 @@ export default function NewOperation() {
                   <input type="number" value={form.seuil_pdv} onChange={e => set('seuil_pdv', e.target.value)}
                     className={inputCls} placeholder="2800" />
                 </FieldGroup>
+
+                {/* Override poids — saisi en GRAMMES */}
                 <FieldGroup
-                  label="Poids unitaire — override manuel (kg/ex)"
+                  label="Poids unitaire — override (g/ex)"
                   hint={computedPoidsFormule != null
-                    ? `Formule : ${computedPoidsG} g — laisser vide pour utiliser la formule`
-                    : "Saisir si pagination/grammage indisponibles"}
-                  source={defaultSources.poids_unitaire_kg}>
-                  <input type="number" step="0.0001" value={form.poids_unitaire_kg}
-                    onChange={e => set('poids_unitaire_kg', e.target.value)}
+                    ? `Formule active : ${computedPoidsG} g — laisser vide`
+                    : "Saisir en grammes si pagination/grammage indisponibles"}
+                  source={defaultSources.poids_unitaire_g}>
+                  <input type="number" step="0.1" value={form.poids_unitaire_g}
+                    onChange={e => set('poids_unitaire_g', e.target.value)}
                     className={inputCls}
-                    placeholder={computedPoidsFormule != null ? `${computedPoidsFormule} (formule)` : "ex: 0.054"} />
+                    placeholder={computedPoidsG != null ? `${computedPoidsG} g (formule)` : "ex: 14.7"} />
                 </FieldGroup>
               </div>
             </div>
