@@ -326,17 +326,28 @@ export default function NewOperation() {
   )
 
   // Calculs dérivés pour l'étape 4
-  const computedPoids = (() => {
-    if (form.poids_unitaire_kg) return parseFloat(form.poids_unitaire_kg)
+  // Formule physique — toujours recalculée depuis pagination/grammage/format
+  const computedPoidsFormule = (() => {
     const p = parseInt(form.pagination || form.pagination_interieure || '0')
     const g = parseFloat(form.grammage || '0')
-    const fmt = form.format_devise || '20x25'
+    const fmt = form.format_devise || ''
     const [w, h] = fmt.toLowerCase().split(/[x×]/).map(Number)
     if (!p || !g || !w || !h) return null
-    // Calcul: (p pages / 2 feuilles) * surface m² * grammage
     const surfaceM2 = (w / 100) * (h / 100)
-    return Math.round(((p / 2) * surfaceM2 * g) * 1000) / 1000
+    // Résultat en kg (6 décimales pour binpacking), affiché en g dans l'UI
+    return Math.round(((p / 2) * surfaceM2 * g) * 1000000) / 1000000
   })()
+
+  // Poids effectif : formule en priorité, champ manuel si formule impossible
+  // (le champ form.poids_unitaire_kg sert d'override explicite uniquement)
+  const computedPoids = computedPoidsFormule ?? (
+    form.poids_unitaire_kg ? parseFloat(form.poids_unitaire_kg) : null
+  )
+
+  // Poids en grammes pour affichage (arrondi à 0.1 g)
+  const computedPoidsG = computedPoids != null
+    ? Math.round(computedPoids * 10000) / 10
+    : null
 
   const exPaquet    = parseInt(form.ex_par_paquet || '100')
   const exCarton    = parseInt(form.ex_par_carton || '200')
@@ -444,7 +455,10 @@ export default function NewOperation() {
       ex_par_carton:          form.ex_par_carton ? parseInt(form.ex_par_carton) : null,
       cartons_par_palette:    form.cartons_par_palette ? parseInt(form.cartons_par_palette) : null,
       seuil_pdv:              form.seuil_pdv ? parseInt(form.seuil_pdv) : null,
-      poids_unitaire_kg:      form.poids_unitaire_kg ? parseFloat(form.poids_unitaire_kg) : null,
+      // Stocker en kg : override manuel si renseigné, sinon valeur formule
+      poids_unitaire_kg:      form.poids_unitaire_kg
+        ? parseFloat(form.poids_unitaire_kg)
+        : (computedPoidsFormule ?? null),
       type_palette_id:        form.type_palette_id || null,
       notes:                  form.notes.trim() || null,
     }
@@ -738,8 +752,8 @@ export default function NewOperation() {
               if (!imp) return null
 
               const multiple = imp.multiple_impose || 100
-              const canBijointage = imp.bijointage && form.pagination
-                && parseInt(form.pagination) <= (imp.bijointage_seuil_pages || 12)
+              // Bijointage : proposé quelle que soit la pagination (demande Céline 13/04)
+              const canBijointage = !!imp.bijointage
 
               // Options valides selon le multiple imposé
               const options: { value: string; label: string; hint: string }[] = []
@@ -774,7 +788,7 @@ export default function NewOperation() {
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
                             canBijointage ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-stone-100 text-stone-400 border-stone-200'
                           }`}>
-                            Bijointage {canBijointage ? `✓ (${form.pagination}p ≤ ${imp.bijointage_seuil_pages}p)` : `✗ (${form.pagination}p > ${imp.bijointage_seuil_pages}p)`}
+                            Bijointage disponible ✓
                           </span>
                         )}
                       </div>
@@ -785,7 +799,7 @@ export default function NewOperation() {
                             ? 'bg-red-50 border-red-200 text-red-700'
                             : 'bg-stone-50 border-stone-200 text-stone-500'
                         }`}>
-                          <span>Poids/ex : <strong className="text-stone-800">{physicalLimits.poidsEx_kg} kg</strong></span>
+                          <span>Poids/ex : <strong className="text-stone-800">{Math.round(physicalLimits.poidsEx_kg * 10000) / 10} g</strong></span>
                           <span>·</span>
                           <span>Épaisseur/ex : <strong className="text-stone-800">{physicalLimits.epaisseurEx_mm} mm</strong></span>
                           <span>·</span>
@@ -799,98 +813,99 @@ export default function NewOperation() {
                       )}
                     </div>
 
-                    {/* Sélection mode */}
-                    <div>
-                      <div className="text-xs text-stone-500 mb-2">Nombre d'exemplaires par paquet</div>
-                      <div className="flex flex-col gap-2">
-                        {/* Options générées depuis les limites physiques + multiple imposé */}
-                        {(() => {
-                          const maxPhys = physicalLimits?.maxPhysique ?? 9999
-                          const groups = practicalGroupings(maxPhys)
-                          // Label contextuel selon position dans la liste
-                          const opts = [
-                            ...groups.map((n, idx) => {
-                              const poids_kg = physicalLimits ? (n * physicalLimits.poidsEx_kg).toFixed(2) : '?'
-                              const haut_cm  = physicalLimits ? (n * physicalLimits.epaisseurEx_mm / 10).toFixed(1) : '?'
-                              // Signal si n est multiple du pas machine
-                              const isMultiple = n % multiple === 0
-                              return {
-                                val: String(n),
-                                label: `${n} ex/paquet`,
-                                hint: `${poids_kg} kg · ${haut_cm} cm${isMultiple ? ` · multiple de ${multiple} ✓` : ''}`,
-                                badge: idx === 0 ? 'recommandé' : (isMultiple ? 'multiple machine' : ''),
+                    {/* ── Sélection ex/paquet : select + champ libre ── */}
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-xs text-stone-500 mb-1.5">Exemplaires par paquet</div>
+                        <div className="flex gap-2">
+                          <select
+                            value={form.ex_par_paquet_mode === 'custom' ? 'custom' : (form.ex_par_paquet || String(multiple))}
+                            onChange={e => {
+                              if (e.target.value === 'custom') {
+                                set('ex_par_paquet_mode', 'custom')
+                              } else {
+                                set('ex_par_paquet_mode', e.target.value)
+                                set('ex_par_paquet', e.target.value)
                               }
-                            }),
-                            ...(canBijointage ? [{
-                              val: `${multiple}_bij`,
-                              label: `${multiple} ex en bijointage`,
-                              hint: `Tête-bêche — ${(multiple * (physicalLimits?.poidsEx_kg ?? 0)).toFixed(2)} kg · pagination ≤ ${imp.bijointage_seuil_pages}p`,
-                              badge: 'bijointage',
-                            }] : []),
-                            { val: 'custom', label: 'Quantité personnalisée', hint: 'Saisie libre si accord imprimeur', badge: '' },
-                          ]
-                          return opts
-                        })().map(opt => {
-                          const selected = form.ex_par_paquet_mode === opt.val ||
-                            (opt.val === String(multiple) && !form.ex_par_paquet_mode)
-                          return (
-                            <label key={opt.val}
-                              className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                                selected ? 'border-brand-400 bg-brand-50' : 'border-stone-200 bg-white hover:border-stone-300'
-                              }`}>
-                              <input type="radio" name="ex_paquet_mode" value={opt.val}
-                                checked={selected}
-                                onChange={() => {
-                                  set('ex_par_paquet_mode', opt.val)
-                                  set('bijointage', opt.val.includes('bij') ? 'true' as any : 'false' as any)
-                                  if (opt.val !== 'custom') {
-                                    set('ex_par_paquet', opt.val.replace('_bij', ''))
-                                  }
-                                }}
-                                className="accent-brand-500 flex-shrink-0" />
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-sm font-medium ${selected ? 'text-brand-700' : 'text-stone-700'}`}>
-                                    {opt.label}
-                                  </span>
-                                  {opt.badge && (
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                      opt.badge === 'recommandé' ? 'bg-green-50 text-green-700 border border-green-200' :
-                                      opt.badge === 'bijointage' ? 'bg-teal-50 text-teal-700 border border-teal-200' : ''
-                                    }`}>{opt.badge}</span>
-                                  )}
+                            }}
+                            className={`${selectCls} flex-1`}>
+                            {(() => {
+                              const maxPhys = physicalLimits?.maxPhysique ?? 9999
+                              const groups = practicalGroupings(maxPhys)
+                              return groups.map(n => {
+                                const poidsG = physicalLimits ? Math.round(n * physicalLimits.poidsEx_kg * 10000) / 10 : null
+                                const hautCm = physicalLimits ? (n * physicalLimits.epaisseurEx_mm / 10).toFixed(1) : null
+                                const isMultiple = n % multiple === 0
+                                const tag = isMultiple ? ` · multiple ${multiple} ✓` : ''
+                                const physInfo = poidsG != null ? ` — ${poidsG} g · ${hautCm} cm${tag}` : ''
+                                return (
+                                  <option key={n} value={String(n)}>
+                                    {n} ex/paquet{physInfo}
+                                  </option>
+                                )
+                              })
+                            })()}
+                            <option value="custom">Quantité libre…</option>
+                          </select>
+                        </div>
+
+                        {/* Champ libre si "custom" */}
+                        {form.ex_par_paquet_mode === 'custom' && (
+                          <div className="mt-2 space-y-1.5">
+                            <input
+                              type="number"
+                              value={form.ex_par_paquet}
+                              onChange={e => set('ex_par_paquet', e.target.value)}
+                              className={inputCls}
+                              placeholder={`Multiple de ${multiple} recommandé — ex: ${multiple}, ${multiple * 2}...`}
+                            />
+                            {form.ex_par_paquet && physicalLimits && (() => {
+                              const n = parseInt(form.ex_par_paquet)
+                              const poidsG = Math.round(n * physicalLimits.poidsEx_kg * 10000) / 10
+                              const hautCm = (n * physicalLimits.epaisseurEx_mm / 10).toFixed(1)
+                              const overMax = n > physicalLimits.maxPhysique
+                              const isMultiple = n % multiple === 0
+                              return (
+                                <div className={`text-xs px-3 py-2 rounded-lg border ${
+                                  overMax ? 'bg-red-50 border-red-200 text-red-700' : 'bg-stone-50 border-stone-200 text-stone-500'
+                                }`}>
+                                  {overMax
+                                    ? `⚠ ${n} ex dépasse le max physique (${physicalLimits.maxPhysique} ex) — risque de casse`
+                                    : `${poidsG} g · ${hautCm} cm${isMultiple ? ` · multiple de ${multiple} ✓` : ` — à confirmer avec ${imp.nom}`}`}
                                 </div>
-                                <div className="text-xs text-stone-400 mt-0.5">{opt.hint}</div>
-                              </div>
-                            </label>
-                          )
-                        })}
+                              )
+                            })()}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Saisie custom */}
-                      {form.ex_par_paquet_mode === 'custom' && (
-                        <div className="mt-2 space-y-1.5">
-                          <input type="number" value={form.ex_par_paquet}
-                            onChange={e => set('ex_par_paquet', e.target.value)}
-                            className={inputCls}
-                            placeholder="Ex: 20, 30, 50..." />
-                          {form.ex_par_paquet && physicalLimits && (() => {
-                            const n = parseInt(form.ex_par_paquet)
-                            const kg = (n * physicalLimits.poidsEx_kg).toFixed(2)
-                            const cm = (n * physicalLimits.epaisseurEx_mm / 10).toFixed(1)
-                            const overMax = n > physicalLimits.maxPhysique
-                            const isMultiple = n % multiple === 0
-                            return (
-                              <div className={`text-xs flex items-center gap-2 px-3 py-2 rounded-lg border ${
-                                overMax ? 'bg-red-50 border-red-200 text-red-700' : 'bg-stone-50 border-stone-200 text-stone-500'
-                              }`}>
-                                {overMax
-                                  ? `⚠ ${n} ex dépasse le max physique (${physicalLimits.maxPhysique} ex) — risque de casse`
-                                  : `${kg} kg · ${cm} cm${isMultiple ? ` · multiple de ${multiple} ✓` : ` · confirmer avec ${imp.nom}`}`
-                                }
-                              </div>
-                            )
-                          })()}
+                      {/* ── Toggle bijointage — indépendant du nombre de paquets ── */}
+                      {canBijointage && (
+                        <div className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${
+                          form.bijointage ? 'border-teal-300 bg-teal-50' : 'border-stone-200 bg-white'
+                        }`}
+                          onClick={() => set('bijointage', !form.bijointage)}>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-medium ${form.bijointage ? 'text-teal-700' : 'text-stone-700'}`}>
+                                Bijointage
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-teal-50 text-teal-700 border-teal-200 font-medium">
+                                disponible
+                              </span>
+                            </div>
+                            <div className="text-xs text-stone-400 mt-0.5">
+                              2 piles tête-bêche par paquet — {form.ex_par_paquet
+                                ? `${parseInt(form.ex_par_paquet) * 2} ex/paquet bijointé`
+                                : `${multiple * 2} ex/paquet bijointé`}
+                            </div>
+                          </div>
+                          {/* Toggle visuel */}
+                          <div className={`w-10 h-6 rounded-full transition-all flex items-center px-1 ${
+                            form.bijointage ? 'bg-teal-500 justify-end' : 'bg-stone-200 justify-start'
+                          }`}>
+                            <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -926,9 +941,13 @@ export default function NewOperation() {
                 {[
                   {
                     label: 'Poids / exemplaire',
-                    value: computedPoids ? `${computedPoids} kg` : '—',
-                    sub: form.poids_unitaire_kg ? 'saisi manuellement' : (computedPoids ? `${form.pagination}p · ${form.grammage} g/m²` : 'pagination ou grammage manquant'),
-                    ok: !!computedPoids,
+                    value: computedPoidsG != null ? `${computedPoidsG} g` : '—',
+                    sub: computedPoidsFormule != null
+                      ? `Calculé — ${form.pagination}p · ${form.grammage} g/m² · ${form.format_devise}`
+                      : form.poids_unitaire_kg
+                        ? `Override manuel — ${parseFloat(form.poids_unitaire_kg) * 1000} g`
+                        : 'Renseigner pagination, grammage et format',
+                    ok: computedPoidsG != null,
                   },
                   {
                     label: 'Exemplaires / palette',
@@ -956,13 +975,20 @@ export default function NewOperation() {
                   },
                   {
                     label: 'Ex / paquet',
-                    value: form.ex_par_paquet || '—',
+                    value: (() => {
+                      const n = parseInt(form.ex_par_paquet || '0')
+                      if (!n) return '—'
+                      return form.bijointage ? `${n} ex · bijointé` : `${n} ex`
+                    })(),
                     sub: (() => {
                       const n = parseInt(form.ex_par_paquet || '0')
                       const max = physicalLimits?.maxPhysique
                       if (n && max && n > max) return `⚠ Dépasse le max physique (${max} ex)`
-                      if (form.bijointage) return 'avec bijointage'
-                      if (physicalLimits && n) return `${(n * physicalLimits.poidsEx_kg).toFixed(2)} kg · ${(n * physicalLimits.epaisseurEx_mm / 10).toFixed(1)} cm`
+                      if (physicalLimits && n) {
+                        const poidsG = Math.round(n * physicalLimits.poidsEx_kg * 10000) / 10
+                        const hautCm = (n * physicalLimits.epaisseurEx_mm / 10).toFixed(1)
+                        return `${poidsG} g · ${hautCm} cm${form.bijointage ? ' · bijointé' : ''}`
+                      }
                       return selectedImprimeur ? `multiple ${selectedImprimeur.multiple_impose || 100}` : ''
                     })(),
                     ok: (() => {
@@ -1060,9 +1086,16 @@ export default function NewOperation() {
                   <input type="number" value={form.seuil_pdv} onChange={e => set('seuil_pdv', e.target.value)}
                     className={inputCls} placeholder="2800" />
                 </FieldGroup>
-                <FieldGroup label="Poids unitaire (kg/ex)" hint={computedPoids ? `Calculé : ${computedPoids} kg` : "Calculé depuis grammage/pagination"} source={defaultSources.poids_unitaire_kg}>
-                  <input type="number" step="0.001" value={form.poids_unitaire_kg} onChange={e => set('poids_unitaire_kg', e.target.value)}
-                    className={inputCls} placeholder={computedPoids ? String(computedPoids) : "0.054"} />
+                <FieldGroup
+                  label="Poids unitaire — override manuel (kg/ex)"
+                  hint={computedPoidsFormule != null
+                    ? `Formule : ${computedPoidsG} g — laisser vide pour utiliser la formule`
+                    : "Saisir si pagination/grammage indisponibles"}
+                  source={defaultSources.poids_unitaire_kg}>
+                  <input type="number" step="0.0001" value={form.poids_unitaire_kg}
+                    onChange={e => set('poids_unitaire_kg', e.target.value)}
+                    className={inputCls}
+                    placeholder={computedPoidsFormule != null ? `${computedPoidsFormule} (formule)` : "ex: 0.054"} />
                 </FieldGroup>
               </div>
             </div>
