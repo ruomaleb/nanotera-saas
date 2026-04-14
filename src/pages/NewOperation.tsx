@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useOrg } from '../hooks/useOrg'
 import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react'
 import type { Enseigne, Imprimeur, SupportType } from '../types/database'
+import { CartonSelector } from '../components/operations/CartonSelector'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -59,6 +60,9 @@ interface FormData {
   poids_unitaire_kg:    string   // legacy — ne plus utiliser directement dans l'UI
   type_palette_id:      string
   notes:                string
+  // Étape 4 — carton (ajout CartonSelector)
+  carton_type_id:       string
+  pu_carton_snapshot:   string
 }
 
 const SOUS_CAT: Record<string, { value: string; label: string }[]> = {
@@ -214,6 +218,7 @@ export default function NewOperation() {
     cartons_par_palette: '', seuil_pdv: '',
     poids_unitaire_g: '', poids_unitaire_kg: '',
     type_palette_id: '', notes: '',
+    carton_type_id: '', pu_carton_snapshot: '',
   })
 
   const set = (k: keyof FormData, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
@@ -479,6 +484,9 @@ export default function NewOperation() {
       poids_unitaire_kg:      computedPoidsFormule ?? overridePoidsKg ?? null,
       type_palette_id:        form.type_palette_id || null,
       notes:                  form.notes.trim() || null,
+      // Carton
+      carton_type_id:         form.carton_type_id || null,
+      pu_carton_snapshot:     form.pu_carton_snapshot ? parseFloat(form.pu_carton_snapshot) : null,
     }
 
     const { data, error: err } = await supabase.from('ops_operations').insert(payload).select('id').single()
@@ -1027,6 +1035,32 @@ export default function NewOperation() {
                     {item.sub && <div className={`text-[11px] mt-0.5 ${item.ok === false ? 'text-amber-600' : 'text-stone-400'}`}>{item.sub}</div>}
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Type de carton */}
+            <div>
+              <SectionTitle>Type de carton</SectionTitle>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl p-4">
+                <CartonSelector
+                  poidsExKg={computedPoidsFormule}
+                  epaisseurExMm={physicalLimits?.epaisseurEx_mm ?? null}
+                  exParPaquet={exPaquet}
+                  value={form.carton_type_id || null}
+                  exParCarton={exCarton || null}
+                  onChange={(cartonTypeId, exParCartonCalc, puSnapshot) => {
+                    const updates: Partial<FormData> = {
+                      carton_type_id:     cartonTypeId ?? '',
+                      pu_carton_snapshot: puSnapshot != null ? String(puSnapshot) : '',
+                    }
+                    // Rétro-calcul nb_paquets_carton depuis ex_par_carton calculé
+                    if (exParCartonCalc != null && exPaquet > 0) {
+                      const nbPaq = Math.round(exParCartonCalc / exPaquet)
+                      if (nbPaq >= 1) updates.nb_paquets_carton = String(nbPaq)
+                    }
+                    setForm(prev => ({ ...prev, ...updates }))
+                  }}
+                />
               </div>
             </div>
 
