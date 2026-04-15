@@ -12,14 +12,26 @@ interface PaletteCardProps {
   isPdv: boolean
   magasins: any[]
   exParCarton: number
+  exParPaquet: number       // pour calculer les couches
+  paquetsParCouche: number  // référence Frétin : ~15 paquets/couche
 }
 
-function PaletteCard({ p, isPdv, magasins, exParCarton }: PaletteCardProps) {
+function PaletteCard({ p, isPdv, magasins, exParCarton, exParPaquet, paquetsParCouche }: PaletteCardProps) {
   const [showDetail, setShowDetail] = useState(false)
 
-  const nbCartons = p.nb_cartons != null
-    ? p.nb_cartons
-    : Math.ceil(p.nb_exemplaires / exParCarton)
+  // PDV = en vrac, pas de cartons. On ignore nb_cartons même s'il contient
+  // une valeur parasite ("vrac", string, etc.) issue d'une ancienne version.
+  const nbCartons = isPdv
+    ? null
+    : (typeof p.nb_cartons === 'number' && p.nb_cartons > 0
+        ? p.nb_cartons
+        : Math.ceil(p.nb_exemplaires / (exParCarton || 200)))
+
+  // Calcul des couches
+  const nbPaquets = exParPaquet > 0 ? Math.ceil(p.nb_exemplaires / exParPaquet) : null
+  const nbCouches = (nbPaquets && paquetsParCouche > 0)
+    ? Math.ceil(nbPaquets / paquetsParCouche)
+    : null
 
   const hasMagasins = magasins.length > 0
 
@@ -64,19 +76,51 @@ function PaletteCard({ p, isPdv, magasins, exParCarton }: PaletteCardProps) {
             <span>Exemplaires</span>
             <span className="font-mono font-medium">{p.nb_exemplaires.toLocaleString()}</span>
           </div>
+
+          {/* Cartons — PDV = en vrac, groupée = nombre de cartons */}
           <div className="flex justify-between items-center">
             <span>Cartons</span>
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono">{nbCartons}</span>
-              {!isPdv && exParCarton > 0 && (() => {
-                const exTheo = nbCartons * exParCarton
-                const fill = exTheo > 0 ? Math.round(p.nb_exemplaires / exTheo * 100) : 100
-                return fill < 95
-                  ? <span className="text-[10px] text-amber-600 font-medium">{fill}% plein</span>
-                  : null
-              })()}
-            </div>
+            {isPdv ? (
+              <span className="text-xs text-amber-600 font-medium italic">En vrac — film</span>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono">{nbCartons}</span>
+                {nbCartons != null && exParCarton > 0 && (() => {
+                  const exTheo = nbCartons * exParCarton
+                  const fill = exTheo > 0 ? Math.round(p.nb_exemplaires / exTheo * 100) : 100
+                  return fill < 95
+                    ? <span className="text-[10px] text-amber-600 font-medium">{fill}% plein</span>
+                    : null
+                })()}
+              </div>
+            )}
           </div>
+
+          {/* Couches */}
+          {nbCouches != null && (
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-gray-400">Couches</span>
+              <div className="flex items-center gap-1 text-gray-500" title={
+                isPdv
+                  ? `${nbPaquets} paquets ÷ ${paquetsParCouche} paq/couche = ${nbCouches} couches`
+                  : `${nbCartons} cartons ÷ ${Math.ceil((nbCartons ?? 0) / nbCouches)} crt/couche = ${nbCouches} couches`
+              }>
+                <span className="font-mono">{nbCouches}</span>
+                <span className="text-[10px] text-gray-400">
+                  × {isPdv ? `${paquetsParCouche} paq` : `${Math.ceil((nbCartons ?? 0) / nbCouches)} crt`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Paquets pour PDV */}
+          {isPdv && nbPaquets != null && (
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-400">Paquets</span>
+              <span className="font-mono text-gray-500">{nbPaquets}</span>
+            </div>
+          )}
+
           <div className="flex justify-between">
             <span>Poids</span>
             <span className="font-mono">{Math.round(p.poids_kg)} kg</span>
@@ -182,6 +226,16 @@ export default function Palettisation() {
   const [showAiPanel, setShowAiPanel] = useState(false)
   const [aiRecos, setAiRecos] = useState<any[]>([])
   const [aiLoading, setAiLoading] = useState(false)
+  const [typesPalette, setTypesPalette] = useState<any[]>([])
+
+  // Chargement référentiel palettes
+  useEffect(() => {
+    supabase
+      .from('ref_types_palette')
+      .select('id, nom, code, longueur_cm, largeur_cm, hauteur_max_cm, cartons_max')
+      .eq('actif', true)
+      .then(({ data }) => setTypesPalette(data ?? []))
+  }, [])
 
   // Chargement liste opérations
   useEffect(() => {
@@ -313,12 +367,45 @@ export default function Palettisation() {
     return acc
   }, {})
 
-  // Conditionnement pour l'éditeur
+  // Conditionnement pour l'éditeur + cartes palettes
   const conditionnement = {
     ex_par_carton:       op?.ex_par_carton       ?? 200,
+    ex_par_paquet:       op?.ex_par_paquet        ?? 100,
     cartons_par_palette: op?.cartons_par_palette  ?? 48,
     poids_unitaire_kg:   op?.poids_unitaire_kg    ?? 0.054,
   }
+  // Paquets par couche — calculé depuis les dimensions palette × format support
+  const paquetsParCoucheCalc = (() => {
+    // Trouver le type de palette de l'opération (ou EPAL Frétin par défaut)
+    const typePal = typesPalette.find(t => t.id === op?.type_palette_id)
+      ?? typesPalette.find(t => t.code === 'EPAL-FRETIN')
+      ?? typesPalette[0]
+
+    if (!typePal) return op?.paquets_par_couche ?? 15
+
+    const palL = typePal.longueur_cm  // 120
+    const palW = typePal.largeur_cm   // 80
+
+    // Format support = format plié du prospectus (ex: "20x25")
+    const fmt = op?.format_document || ''
+    const parts = fmt.toLowerCase().replace('×','x').split('x').map(Number)
+    if (parts.length < 2 || !parts[0] || !parts[1]) {
+      return op?.paquets_par_couche ?? 15
+    }
+    const supL = parts[0]  // 20
+    const supW = parts[1]  // 25
+
+    // Essayer les deux orientations, prendre la meilleure
+    const orient1 = Math.floor(palL / supL) * Math.floor(palW / supW)
+    const orient2 = Math.floor(palL / supW) * Math.floor(palW / supL)
+    const max = Math.max(orient1, orient2)
+
+    // Facteur de foisonnement 85% (espace entre paquets, liens)
+    const FOISONNEMENT = 0.85
+    return Math.max(1, Math.floor(max * FOISONNEMENT))
+  })()
+
+  const PAQUETS_PAR_COUCHE = op?.paquets_par_couche ?? paquetsParCoucheCalc
 
   return (
     <div>
@@ -597,6 +684,8 @@ export default function Palettisation() {
                           isPdv={isPdv}
                           magasins={magasins}
                           exParCarton={conditionnement.ex_par_carton}
+                          exParPaquet={conditionnement.ex_par_paquet}
+                          paquetsParCouche={PAQUETS_PAR_COUCHE}
                         />
                       )
                     })}
