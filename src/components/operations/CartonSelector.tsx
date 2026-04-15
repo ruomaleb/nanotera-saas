@@ -1,353 +1,287 @@
-// src/components/operations/CartonSelector.tsx
-//
-// Sélecteur de type de carton pour l'étape 4 "Logistique" de NewOperation.
-//
-// Props reçues du parent (NewOperation, étape 3/4) :
-//   poidsExKg      — poids unitaire calculé (computedPoidsFormule, en kg)
-//   epaisseurExMm  — épaisseur unitaire calculée (physicalLimits.epaisseurEx_mm, en mm)
-//   exParPaquet    — exemplaires par paquet (état étape 3)
-//   value          — carton_type_id sélectionné (state du parent)
-//   exParCarton    — valeur actuelle ex_par_carton (state du parent)
-//   onChange       — callback (cartonTypeId, exParCarton, puSnapshot) => void
+/**
+ * CartonSelector.tsx
+ * Sélecteur de type de carton pour NewOperation — Étape 4
+ *
+ * Logique :
+ * - Charge ref_types_carton (actif = true)
+ * - Pour chaque carton, calcule le nombre de paquets qui tiennent
+ *   en hauteur intérieure et en poids max
+ * - Affiche les cartons compatibles (vert), incompatibles (grisés)
+ * - Remonte au parent : (carton_type_id, ex_par_carton_calculé, pu_ht_snapshot)
+ */
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { CheckCircle2, AlertTriangle, Package, ChevronDown, ChevronUp } from 'lucide-react'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────
 
 interface CartonType {
   id: string
-  reference: string | null
+  reference: string
   nom: string
-  descriptif: string | null
+  descriptif: string
   longueur_ext_mm: number
   largeur_ext_mm: number
   hauteur_ext_mm: number
   epaisseur_paroi_mm: number
-  hauteur_interieure_mm: number   // colonne générée Postgres
+  hauteur_interieure_mm: number
   poids_max_kg: number | null
   type_cannelure: string | null
-  pu_ht_euros: number | null
   usage_typique: string | null
+  pu_ht_euros: number | null
+  actif: boolean
 }
 
-interface CalcResult {
-  maxParPoids: number | null      // null si poids_max_kg inconnu
-  maxParHauteur: number | null    // null si epaisseurExMm = 0
-  exMaxPhysique: number | null
-  exParCartonCalc: number | null  // arrondi au multiple de exParPaquet
-  facteurLimitant: 'poids' | 'hauteur' | 'inconnu' | null
+interface CartonResult {
+  carton: CartonType
+  nb_paquets_max: number | null  // null si épaisseur inconnue
+  ex_par_carton: number | null
+  compatible: boolean
+  raison_incompatible?: string
 }
 
-interface CartonSelectorProps {
+interface Props {
   poidsExKg: number | null
   epaisseurExMm: number | null
   exParPaquet: number
-  value: string | null            // carton_type_id
-  exParCarton: number | null      // valeur affichée dans le champ
+  exParCarton: number | null            // valeur courante (du form)
+  value: string | null                 // carton_type_id sélectionné
   onChange: (
     cartonTypeId: string | null,
     exParCarton: number | null,
-    puSnapshot: number | null
+    puSnapshot: number | null,
   ) => void
 }
 
-// ─── Formule de calcul ────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
 
-function calculerExParCarton(
+function calcResult(
   carton: CartonType,
   poidsExKg: number | null,
   epaisseurExMm: number | null,
-  exParPaquet: number
-): CalcResult {
-  let maxParPoids: number | null = null
-  let maxParHauteur: number | null = null
+  exParPaquet: number,
+): CartonResult {
+  // Hauteur d'un paquet en mm
+  const hauteurPaquet = epaisseurExMm != null ? epaisseurExMm * exParPaquet : null
 
-  if (carton.poids_max_kg != null && poidsExKg != null && poidsExKg > 0) {
-    maxParPoids = Math.floor(carton.poids_max_kg / poidsExKg)
+  // Nombre de paquets qui tiennent en hauteur
+  const nb_paquets_max = hauteurPaquet && hauteurPaquet > 0
+    ? Math.floor(carton.hauteur_interieure_mm / hauteurPaquet)
+    : null
+
+  const ex_par_carton = nb_paquets_max != null && nb_paquets_max > 0
+    ? nb_paquets_max * exParPaquet
+    : null
+
+  // Compatibilité poids
+  const poidsTotalKg = (ex_par_carton != null && poidsExKg != null)
+    ? ex_par_carton * poidsExKg
+    : null
+
+  const depassePoids = (
+    poidsTotalKg != null &&
+    carton.poids_max_kg != null &&
+    poidsTotalKg > carton.poids_max_kg
+  )
+
+  const aucunPaquet = nb_paquets_max != null && nb_paquets_max < 1
+
+  if (aucunPaquet) {
+    return {
+      carton, nb_paquets_max: 0, ex_par_carton: null,
+      compatible: false,
+      raison_incompatible: `Hauteur intérieure insuffisante (${carton.hauteur_interieure_mm} mm < ${Math.ceil(hauteurPaquet ?? 0)} mm/paquet)`,
+    }
   }
 
-  if (carton.hauteur_interieure_mm != null && epaisseurExMm != null && epaisseurExMm > 0) {
-    maxParHauteur = Math.floor(carton.hauteur_interieure_mm / epaisseurExMm)
+  if (depassePoids) {
+    return {
+      carton, nb_paquets_max, ex_par_carton,
+      compatible: false,
+      raison_incompatible: `Poids dépassé (${poidsTotalKg?.toFixed(1)} kg > max ${carton.poids_max_kg} kg)`,
+    }
   }
 
-  if (maxParPoids == null && maxParHauteur == null) {
-    return { maxParPoids, maxParHauteur, exMaxPhysique: null, exParCartonCalc: null, facteurLimitant: 'inconnu' }
-  }
-
-  const candidates = [maxParPoids, maxParHauteur].filter((v): v is number => v !== null)
-  const exMaxPhysique = Math.min(...candidates)
-
-  const facteurLimitant: CalcResult['facteurLimitant'] =
-    maxParPoids != null && maxParHauteur != null
-      ? maxParPoids <= maxParHauteur ? 'poids' : 'hauteur'
-      : maxParPoids == null ? 'hauteur' : 'poids'
-
-  // Arrondi au multiple inférieur de exParPaquet (carton = N paquets entiers)
-  const exParCartonCalc = exParPaquet > 0
-    ? Math.floor(exMaxPhysique / exParPaquet) * exParPaquet
-    : exMaxPhysique
-
-  return { maxParPoids, maxParHauteur, exMaxPhysique, exParCartonCalc, facteurLimitant }
+  return { carton, nb_paquets_max, ex_par_carton, compatible: true }
 }
 
-// ─── Composant ────────────────────────────────────────────────────────────────
+// ── Composant ─────────────────────────────────────────────────
 
 export function CartonSelector({
   poidsExKg,
   epaisseurExMm,
   exParPaquet,
-  value,
   exParCarton,
+  value,
   onChange,
-}: CartonSelectorProps) {
-  const [cartons, setCartons] = useState<CartonType[]>([])
-  const [loading, setLoading] = useState(true)
-  const [erreur, setErreur] = useState<string | null>(null)
-  const [calc, setCalc] = useState<CalcResult | null>(null)
-  const [overrideManuel, setOverrideManuel] = useState(false)
+}: Props) {
+  const [cartons, setCartons]         = useState<CartonType[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [showAll, setShowAll]         = useState(false)
 
-  // ── Chargement du référentiel ──
   useEffect(() => {
-    const charger = async () => {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('v_types_carton_specs')
-        .select('*')
-
-      if (error) {
-        setErreur('Impossible de charger les types de cartons.')
-        console.error('[CartonSelector]', error)
-      } else {
-        setCartons(data as CartonType[])
-      }
-      setLoading(false)
-    }
-    charger()
+    supabase
+      .from('ref_types_carton')
+      .select('*')
+      .eq('actif', true)
+      .order('hauteur_ext_mm')
+      .then(({ data }) => {
+        setCartons((data as CartonType[]) ?? [])
+        setLoading(false)
+      })
   }, [])
 
-  // ── Recalcul à chaque changement de carton ou de specs document ──
-  useEffect(() => {
-    if (!value) { setCalc(null); return }
-    const carton = cartons.find(c => c.id === value)
-    if (!carton) { setCalc(null); return }
+  const results: CartonResult[] = cartons.map(c =>
+    calcResult(c, poidsExKg, epaisseurExMm, exParPaquet)
+  )
 
-    const result = calculerExParCarton(carton, poidsExKg, epaisseurExMm, exParPaquet)
-    setCalc(result)
+  const compatibles   = results.filter(r => r.compatible)
+  const incompatibles = results.filter(r => !r.compatible)
+  const displayed     = showAll ? results : compatibles
 
-    // On ne pré-remplit que si l'utilisateur n'a pas fait d'override manuel
-    if (!overrideManuel && result.exParCartonCalc != null) {
-      onChange(value, result.exParCartonCalc, carton.pu_ht_euros ?? null)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, cartons, poidsExKg, epaisseurExMm, exParPaquet])
+  const selectedResult = results.find(r => r.carton.id === value)
 
-  // ── Sélection d'un carton ──
-  const handleSelectCarton = (id: string) => {
-    setOverrideManuel(false)
-    const carton = cartons.find(c => c.id === id) ?? null
-    if (!carton) {
-      onChange(null, null, null)
-      return
-    }
-    const result = calculerExParCarton(carton, poidsExKg, epaisseurExMm, exParPaquet)
-    setCalc(result)
-    onChange(id, result.exParCartonCalc ?? null, carton.pu_ht_euros ?? null)
-  }
-
-  // ── Override manuel de ex_par_carton ──
-  const handleExParCartonChange = (v: string) => {
-    const parsed = parseInt(v, 10)
-    setOverrideManuel(true)
-    onChange(value, isNaN(parsed) ? null : parsed, cartonSelectionne?.pu_ht_euros ?? null)
-  }
-
-  const cartonSelectionne = cartons.find(c => c.id === value) ?? null
-
-  // ── Badge facteur limitant ──
-  const BadgeLimitant = () => {
-    if (!calc?.facteurLimitant || calc.facteurLimitant === 'inconnu') return null
-    const label = calc.facteurLimitant === 'poids' ? 'limité par le poids' : 'limité par la hauteur'
-    const classes = calc.facteurLimitant === 'poids'
-      ? 'bg-amber-50 text-amber-700 border border-amber-200'
-      : 'bg-blue-50 text-blue-700 border border-blue-200'
-    return (
-      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${classes}`}>
-        {label}
-      </span>
-    )
-  }
-
-  // ── Rendu ──
   if (loading) {
     return (
-      <div className="text-sm text-muted-foreground animate-pulse">
-        Chargement des types de cartons…
+      <div className="flex items-center gap-2 text-xs text-stone-400 py-3">
+        <span className="animate-pulse">Chargement des cartons...</span>
       </div>
     )
-  }
-
-  if (erreur) {
-    return <p className="text-sm text-destructive">{erreur}</p>
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
 
-      {/* Sélecteur principal */}
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium text-foreground">
-          Type de carton
-        </label>
-        <select
-          value={value ?? ''}
-          onChange={e => handleSelectCarton(e.target.value)}
-          className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm
-                     focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1
-                     disabled:opacity-50"
-        >
-          <option value="">— Sélectionner un type de carton —</option>
-          {cartons.map(c => (
-            <option key={c.id} value={c.id}>
-              {c.nom}
-              {c.reference ? ` (réf. ${c.reference})` : ''}
-              {c.pu_ht_euros != null ? ` — ${c.pu_ht_euros.toFixed(2)} € HT` : ''}
-            </option>
-          ))}
-        </select>
-
-        {/* Description du carton sélectionné */}
-        {cartonSelectionne?.usage_typique && (
-          <p className="text-xs text-muted-foreground mt-1">
-            {cartonSelectionne.usage_typique}
-          </p>
-        )}
-      </div>
-
-      {/* Dimensions du carton sélectionné */}
-      {cartonSelectionne && (
-        <div className="rounded-md border border-border bg-muted/30 p-3 grid grid-cols-3 gap-3 text-center">
-          <div>
-            <div className="text-xs text-muted-foreground mb-0.5">Hauteur intérieure</div>
-            <div className="text-sm font-medium">
-              {cartonSelectionne.hauteur_interieure_mm.toFixed(0)} mm
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground mb-0.5">Résistance max</div>
-            <div className="text-sm font-medium">
-              {cartonSelectionne.poids_max_kg != null
-                ? `${cartonSelectionne.poids_max_kg} kg`
-                : '—'}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground mb-0.5">Cannelure</div>
-            <div className="text-sm font-medium capitalize">
-              {cartonSelectionne.type_cannelure ?? '—'}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Résultat du calcul */}
-      {calc && cartonSelectionne && (
-        <div className="rounded-md border border-border bg-background p-3 space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-muted-foreground">Capacité physique :</span>
-            {calc.exParCartonCalc != null ? (
-              <span className="text-sm font-semibold text-foreground">
-                {calc.exParCartonCalc} ex max
-              </span>
-            ) : (
-              <span className="text-sm text-muted-foreground italic">
-                indéterminé (specs document manquantes)
-              </span>
-            )}
-            <BadgeLimitant />
-          </div>
-
-          {/* Détail des deux contraintes */}
-          {(calc.maxParPoids != null || calc.maxParHauteur != null) && (
-            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-              <div>
-                Contrainte poids :{' '}
-                <span className="font-medium text-foreground">
-                  {calc.maxParPoids != null ? `${calc.maxParPoids} ex` : 'n/a'}
-                </span>
-                {poidsExKg != null && cartonSelectionne.poids_max_kg != null && (
-                  <span className="ml-1">
-                    ({cartonSelectionne.poids_max_kg} kg ÷ {poidsExKg.toFixed(4)} kg/ex)
-                  </span>
-                )}
-              </div>
-              <div>
-                Contrainte hauteur :{' '}
-                <span className="font-medium text-foreground">
-                  {calc.maxParHauteur != null ? `${calc.maxParHauteur} ex` : 'n/a'}
-                </span>
-                {epaisseurExMm != null && (
-                  <span className="ml-1">
-                    ({cartonSelectionne.hauteur_interieure_mm.toFixed(0)} mm ÷ {epaisseurExMm.toFixed(2)} mm/ex)
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Champ ex_par_carton — pré-rempli, modifiable manuellement */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-foreground">
-            Exemplaires par carton
-          </label>
-          {overrideManuel && (
-            <button
-              type="button"
-              onClick={() => {
-                setOverrideManuel(false)
-                if (calc?.exParCartonCalc != null) {
-                  onChange(value, calc.exParCartonCalc, cartonSelectionne?.pu_ht_euros ?? null)
-                }
-              }}
-              className="text-xs text-primary underline underline-offset-2 hover:no-underline"
-            >
-              Réinitialiser au calcul
-            </button>
-          )}
-        </div>
-        <input
-          type="number"
-          min={1}
-          step={exParPaquet > 0 ? exParPaquet : 1}
-          value={exParCarton ?? ''}
-          onChange={e => handleExParCartonChange(e.target.value)}
-          placeholder="ex : 200"
-          className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm
-                     focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
-        />
-        <p className="text-xs text-muted-foreground">
-          Doit être un multiple de {exParPaquet} ex/paquet.
-          {exParCarton != null && exParPaquet > 0 && exParCarton % exParPaquet !== 0 && (
-            <span className="ml-1 text-destructive font-medium">
-              ⚠ {exParCarton} n'est pas un multiple de {exParPaquet}.
-            </span>
-          )}
-        </p>
-      </div>
-
-      {/* Indicateur de coût carton (si prix connu) */}
-      {cartonSelectionne?.pu_ht_euros != null && (
-        <p className="text-xs text-muted-foreground">
-          Prix unitaire carton : <span className="font-medium text-foreground">
-            {cartonSelectionne.pu_ht_euros.toFixed(2)} € HT
+      {/* Info contexte */}
+      {(poidsExKg == null || epaisseurExMm == null) && (
+        <div className="flex items-start gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+          <span>
+            {poidsExKg == null && epaisseurExMm == null
+              ? 'Renseignez le grammage, la pagination et le format pour affiner la sélection.'
+              : poidsExKg == null
+              ? 'Poids unitaire non calculé — la limite de poids ne peut pas être vérifiée.'
+              : 'Épaisseur non calculée — la hauteur de carton ne peut pas être vérifiée.'
+            }
           </span>
-          {' '}— le coût total sera calculé après le bin-packing.
-        </p>
+        </div>
       )}
 
+      {/* Liste cartons */}
+      {displayed.length === 0 ? (
+        <div className="text-xs text-stone-400 py-2">
+          Aucun carton compatible avec ces paramètres.{' '}
+          <button onClick={() => setShowAll(true)} className="underline text-brand-500">
+            Voir tous les cartons
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {displayed.map(({ carton, nb_paquets_max, ex_par_carton: exCalc, compatible, raison_incompatible }) => {
+            const selected = value === carton.id
+            return (
+              <button
+                key={carton.id}
+                type="button"
+                onClick={() => {
+                  if (selected) {
+                    onChange(null, null, null)
+                  } else {
+                    onChange(carton.id, exCalc, carton.pu_ht_euros ?? null)
+                  }
+                }}
+                className={`w-full text-left rounded-lg border px-3 py-2.5 transition-all
+                  ${selected
+                    ? 'border-brand-400 bg-brand-50 shadow-sm'
+                    : compatible
+                    ? 'border-stone-200 hover:border-stone-300 bg-white'
+                    : 'border-stone-100 bg-stone-50 opacity-60 cursor-not-allowed'
+                  }`}
+                disabled={!compatible && !selected}
+              >
+                <div className="flex items-start gap-2.5">
+                  {/* Icône */}
+                  <div className={`flex-shrink-0 mt-0.5 ${selected ? 'text-brand-500' : compatible ? 'text-stone-300' : 'text-stone-200'}`}>
+                    {selected
+                      ? <CheckCircle2 size={15} />
+                      : <Package size={15} />
+                    }
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    {/* Nom + référence */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-medium ${selected ? 'text-brand-700' : 'text-stone-700'}`}>
+                        {carton.nom}
+                      </span>
+                      <span className="text-xs text-stone-400 font-mono">{carton.reference}</span>
+                      {carton.pu_ht_euros != null && (
+                        <span className="text-xs text-stone-400">{carton.pu_ht_euros.toFixed(2)} €</span>
+                      )}
+                    </div>
+
+                    {/* Capacité calculée */}
+                    {compatible && nb_paquets_max != null && (
+                      <div className="text-xs text-stone-500 mt-0.5">
+                        {nb_paquets_max} paquet{nb_paquets_max > 1 ? 's' : ''} × {exParPaquet} ex
+                        {' '}= <span className="font-medium text-stone-700">{exCalc} ex/carton</span>
+                        {poidsExKg && exCalc
+                          ? <span className="text-stone-400"> — {(poidsExKg * exCalc).toFixed(1)} kg</span>
+                          : null
+                        }
+                      </div>
+                    )}
+
+                    {/* Raison incompatibilité */}
+                    {!compatible && raison_incompatible && (
+                      <div className="text-xs text-red-400 mt-0.5">{raison_incompatible}</div>
+                    )}
+
+                    {/* Usage typique */}
+                    {carton.usage_typique && (
+                      <div className="text-xs text-stone-400 mt-0.5 truncate">{carton.usage_typique}</div>
+                    )}
+                  </div>
+
+                  {/* Dimensions */}
+                  <div className="text-xs text-stone-400 flex-shrink-0 text-right">
+                    <div>{carton.longueur_ext_mm}×{carton.largeur_ext_mm}×{carton.hauteur_ext_mm}</div>
+                    <div>int. {carton.hauteur_interieure_mm} mm</div>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Toggle afficher incompatibles */}
+      {incompatibles.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(v => !v)}
+          className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-600 mt-1"
+        >
+          {showAll
+            ? <><ChevronUp size={12} /> Masquer les cartons incompatibles ({incompatibles.length})</>
+            : <><ChevronDown size={12} /> Voir aussi les cartons incompatibles ({incompatibles.length})</>
+          }
+        </button>
+      )}
+
+      {/* Résumé sélection */}
+      {selectedResult && (
+        <div className="mt-2 text-xs bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 text-brand-700 space-y-0.5">
+          <div className="font-medium">{selectedResult.carton.nom} sélectionné</div>
+          {selectedResult.ex_par_carton != null && (
+            <div>{selectedResult.ex_par_carton} ex/carton — {selectedResult.nb_paquets_max} paquet{(selectedResult.nb_paquets_max ?? 0) > 1 ? 's' : ''}</div>
+          )}
+          {selectedResult.carton.pu_ht_euros != null && (
+            <div>{selectedResult.carton.pu_ht_euros.toFixed(2)} € HT/carton</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

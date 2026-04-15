@@ -80,7 +80,7 @@ export default function App() {
     <SelectionProvider>
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Home />} />
         <Route path="/enseignes" element={<Enseignes />} />
         <Route path="/supports" element={<Supports />} />
         <Route path="/modeles" element={<Modeles />} />
