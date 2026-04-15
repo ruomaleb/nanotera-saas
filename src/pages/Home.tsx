@@ -142,10 +142,9 @@ export default function Home() {
         </button>
 
         {/* Carte Chainlit */}
-        <a
-          href="https://optim-logistique.bigone.media"
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => navigate('/assistant')}
           className="group text-left bg-white border border-stone-200 rounded-xl p-6
                      hover:border-amber-300 hover:shadow-sm transition-all duration-150 block"
         >
@@ -170,7 +169,7 @@ export default function Home() {
 
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600
                            group-hover:gap-2.5 transition-all">
-            Ouvrir <ExternalLink size={12} />
+            Ouvrir <ArrowRight size={12} />
           </span>
         </a>
       </div>
@@ -178,7 +177,7 @@ export default function Home() {
       {/* Note SSO (à retirer après Chantier 2) */}
       <p className="text-xs text-stone-300 text-center -mt-6">
         L'assistant conversationnel s'ouvrira dans un nouvel onglet.
-        La connexion automatique sera disponible prochainement.
+        L'assistant s'ouvre dans la même fenêtre avec votre session active.
       </p>
 
       {/* ── Opérations récentes ── */}
