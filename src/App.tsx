@@ -17,6 +17,7 @@ import Livrables from './pages/Livrables'
 import Palettisation from './pages/Palettisation'
 import Home from './pages/Home'
 import AssistantPage from './pages/AssistantPage'
+import RecapPage from './pages/RecapPage'
 import Dashboard from './pages/Dashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import { AdminGlobal, AdminEnseignes, AdminImprimeurs, AdminPrompts } from './pages/AdminPages'
@@ -83,6 +84,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/assistant" element={<AssistantPage />} />
+        <Route path="/recap/:operationId" element={<RecapPage />} />
         <Route path="/enseignes" element={<Enseignes />} />
         <Route path="/supports" element={<Supports />} />
         <Route path="/modeles" element={<Modeles />} />
