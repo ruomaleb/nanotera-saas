@@ -95,18 +95,17 @@ export default function AdminUsers() {
     setSaving(user.auth_id)
     try {
       const nom = user.email.split('@')[0]
+      // Générer l'UUID côté client pour éviter le SELECT après INSERT (RLS)
+      const newId = crypto.randomUUID()
 
-      // Créer saas_user
-      const { data: su, error: e1 } = await supabase
+      const { error: e1 } = await supabase
         .from('saas_users')
-        .insert({ auth_user_id: user.auth_id, email: user.email, nom })
-        .select('id').single()
+        .insert({ id: newId, auth_user_id: user.auth_id, email: user.email, nom })
       if (e1) throw e1
 
-      // Créer membership
       const { error: e2 } = await supabase
         .from('saas_memberships')
-        .insert({ user_id: su.id, org_id: org.org_id, role: 'member' })
+        .insert({ user_id: newId, org_id: org.org_id, role: 'member' })
       if (e2) throw e2
 
       flash(`Profil créé pour ${user.email}`)
