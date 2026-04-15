@@ -158,27 +158,30 @@ export default function AdminUsers() {
     if (!inviteEmail || !inviteNom || !org?.org_id) return
     setInviting(true)
     try {
-      // 1. Créer le compte Auth via magic link (invite)
-      const { data: authData, error: e1 } = await supabase.auth.signInWithOtp({
-        email: inviteEmail,
-        options: { shouldCreateUser: true },
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://nanotera-api-saas-production.up.railway.app'
+      const resp = await fetch(`${apiUrl}/api/users/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email:  inviteEmail,
+          nom:    inviteNom,
+          role:   inviteRole,
+          org_id: org.org_id,
+        }),
       })
-      // Note : signInWithOtp crée le user ET envoie un magic link (= invitation)
-      // En production, utiliser supabase.auth.admin.inviteUserByEmail via le backend
-      if (e1) throw e1
-
-      // 2. Attendre que le user Auth soit créé (peut prendre quelques secondes)
-      // On crée le saas_user directement si l'auth_id est retourné
-      // Sinon on affiche un message pour que l'utilisateur se connecte d'abord
-
-      flash(`Invitation envoyée à ${inviteEmail}. Il devra se connecter pour activer son compte, puis revenir ici pour lui attribuer un rôle.`)
+      if (resp.status === 409) throw new Error('Un compte existe déjà avec cet email')
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}))
+        throw new Error(err.detail ?? `Erreur ${resp.status}`)
+      }
+      flash(`Invitation envoyée à ${inviteEmail}`)
       setShowInvite(false)
       setInviteEmail('')
       setInviteNom('')
       setInviteRole('member')
       await load()
     } catch (e: any) {
-      flash(e.message ?? 'Erreur lors de l\'invitation', true)
+      flash(e.message ?? "Erreur lors de l'invitation", true)
     }
     setInviting(false)
   }
