@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, ArrowRight, Upload, Search, BoxesIcon, FileOutput, Pencil, Trash2, ChevronRight, FileSpreadsheet } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Pencil, Trash2 } from 'lucide-react'
 import { useOpContext } from '../components/Layout'
 import type { Operation, Palette } from '../types/database'
 
@@ -141,11 +141,21 @@ export default function OperationDetail() {
             {op.date_debut && op.date_fin && ` · ${op.date_debut} → ${op.date_fin}`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <button onClick={handleDelete}
             className="flex items-center gap-1 px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
             <Trash2 size={12} /> Supprimer
           </button>
+          {['import','analyse','palettisation','livrables'].includes(op.statut) && (
+            <button onClick={() => navigate(
+                op.statut === 'import' ? '/analyse' :
+                ['analyse','palettisation'].includes(op.statut) ? `/palettisation/${op.id}` :
+                `/livrables/${op.id}`
+              )}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-stone-900 text-white rounded-lg hover:opacity-85 transition-all">
+              Continuer <ArrowRight size={12} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -222,51 +232,7 @@ export default function OperationDetail() {
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="border border-gray-200 rounded-xl p-4">
-          <h3 className="font-medium text-sm mb-3">Actions</h3>
-          <div className="grid grid-cols-4 gap-3">
-            <button
-              onClick={() => navigate('/import')}
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
-            >
-              <Upload size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Importer</div>
-                <div className="text-[10px] text-gray-400">Fichier repartition</div>
-              </div>
-            </button>
-            <button
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
-            >
-              <Search size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Analyser</div>
-                <div className="text-[10px] text-gray-400">Controles qualite</div>
-              </div>
-            </button>
-            <button
-              onClick={() => navigate(`/palettisation/${op.id}`)}
-              disabled={palCount === 0}
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors disabled:opacity-40"
-            >
-              <BoxesIcon size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Palettisation</div>
-                <div className="text-[10px] text-gray-400">{palCount > 0 ? `${palCount} palettes` : 'Pas encore'}</div>
-              </div>
-            </button>
-            <button
-              className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs transition-colors"
-            >
-              <FileOutput size={16} className="text-gray-400" />
-              <div className="text-left">
-                <div className="font-medium">Livrables</div>
-                <div className="text-[10px] text-gray-400">Fiches, BL, etiquettes</div>
-              </div>
-            </button>
-          </div>
-        </div>
+
 
         {op.notes && (
           <div className="mt-4 border border-gray-200 rounded-xl p-4">

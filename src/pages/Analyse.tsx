@@ -290,6 +290,9 @@ export default function Analyse() {
   const [op, setOp]       = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [expandedCheck, setExpandedCheck] = useState<string | null>(null)
+  const [showEditParams, setShowEditParams] = useState(false)
+  const [editParams, setEditParams] = useState<Record<string,string>>({})
+  const [savingParams, setSavingParams] = useState(false)
 
   useEffect(() => {
     supabase.from('ops_operations')
@@ -312,8 +315,35 @@ export default function Analyse() {
   }, [selectedOp, operations])
 
   useEffect(() => {
-    if (op) setCurrentOp({ id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut })
+    if (op) {
+      setCurrentOp({ id: op.id, code: op.code_operation, nom: op.nom_operation ?? '', statut: op.statut })
+      setEditParams({
+        ex_par_paquet:       String(op.ex_par_paquet ?? 100),
+        nb_paquets_carton:   String(op.ex_par_carton && op.ex_par_paquet ? Math.round(op.ex_par_carton / op.ex_par_paquet) : 2),
+        cartons_par_palette: String(op.cartons_par_palette ?? 48),
+        seuil_pdv:           String(op.seuil_pdv ?? 2800),
+      })
+    }
   }, [op?.id])
+
+  // Sauvegarder les paramètres de palettisation
+  const handleSaveParams = async () => {
+    if (!op) return
+    setSavingParams(true)
+    const exPaq = parseInt(editParams.ex_par_paquet || '100')
+    const nbPaq = parseInt(editParams.nb_paquets_carton || '2')
+    const update = {
+      ex_par_paquet:       exPaq,
+      ex_par_carton:       exPaq * nbPaq,
+      cartons_par_palette: parseInt(editParams.cartons_par_palette || '48'),
+      seuil_pdv:           parseInt(editParams.seuil_pdv || '2800'),
+    }
+    await supabase.from('ops_operations').update(update).eq('id', op.id)
+    setOp((prev: any) => prev ? { ...prev, ...update } : prev)
+    setOperations(prev => prev.map((o: any) => o.id === op.id ? { ...o, ...update } : o))
+    setSavingParams(false)
+    setShowEditParams(false)
+  }
 
   // Parsing des contrôles
   const rapport = op?.rapport_controles || {}
@@ -486,22 +516,30 @@ export default function Analyse() {
               })}
             </div>
 
-            {/* Paramètres + estimation */}
-            <div className="bg-white border border-stone-200 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
+            {/* Paramètres de palettisation — panneau inline éditable */}
+            <div className="bg-white border border-stone-200 rounded-xl overflow-hidden">
+
+              {/* En-tête */}
+              <div className="flex items-center justify-between px-4 py-3 bg-stone-50 border-b border-stone-100">
                 <div className="text-xs font-medium text-stone-700">Paramètres de palettisation</div>
-                <button onClick={() => navigate(`/operations/${op.id}`)}
-                  className="text-[10px] text-brand-600 hover:text-brand-700 transition-colors">
-                  Modifier →
+                <button onClick={() => setShowEditParams(v => !v)}
+                  className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
+                    showEditParams
+                      ? 'bg-stone-800 text-white border-stone-800'
+                      : 'text-brand-600 border-brand-200 hover:bg-brand-50'
+                  }`}>
+                  {showEditParams ? '✕ Fermer' : '✎ Modifier'}
                 </button>
               </div>
-              <div className="grid grid-cols-5 gap-2">
+
+              {/* Résumé compact (toujours visible) */}
+              <div className="grid grid-cols-5 gap-2 p-4">
                 {[
                   { label: 'Ex/paquet',   value: exPaquet,  sub: 'machine',      warn: true  },
                   { label: 'Ex/carton',   value: exCarton,  sub: exPaquet ? `${exCarton && exPaquet ? Math.round(exCarton/exPaquet) : '?'} paq.` : 'estimé', warn: true },
                   { label: 'Crt/palette', value: crtPal,    sub: 'Frétin',       warn: true  },
                   { label: 'Seuil PDV',   value: op.seuil_pdv?.toLocaleString('fr-FR'), sub: 'exemplaires', warn: true },
-                  { label: 'Poids/ex',    value: poids ? `${poids} kg` : null,   sub: 'calculé',      warn: false },
+                  { label: 'Poids/ex',    value: poids ? `${Math.round(poids * 10000) / 10} g` : null, sub: 'calculé', warn: false },
                 ].map((p, i) => (
                   <div key={i} className={`rounded-lg p-2.5 border ${!p.value && p.warn ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
                     <div className="text-[10px] text-stone-400 mb-0.5">{p.label}</div>
@@ -512,14 +550,117 @@ export default function Analyse() {
                   </div>
                 ))}
               </div>
-              {(nbPalEst || poidsPal) && (
-                <div className="mt-3 text-xs text-stone-400 border-t border-stone-100 pt-3">
+
+              {/* Estimation */}
+              {(nbPalEst || poidsPal) && !showEditParams && (
+                <div className="px-4 pb-3 text-xs text-stone-400 border-t border-stone-100 pt-3">
                   Estimation :
                   {nbPalEst && <span className="text-stone-700 font-medium ml-1">~{nbPalEst} palettes</span>}
                   {poidsPal && <span className="ml-2">· {poidsPal.toLocaleString('fr-FR')} kg/palette</span>}
                   {exPal && <span className="ml-2">· {exPal.toLocaleString('fr-FR')} ex/palette</span>}
                 </div>
               )}
+
+              {/* Panneau d'édition inline */}
+              {showEditParams && (() => {
+                const epq    = parseInt(editParams.ex_par_paquet || '100')
+                const nbPaq  = parseInt(editParams.nb_paquets_carton || '2')
+                const ectn   = epq * nbPaq
+                const crtPl  = parseInt(editParams.cartons_par_palette || '48')
+                const seuil  = parseInt(editParams.seuil_pdv || '2800')
+                const exPl   = ectn * crtPl
+                const poidsPl = poids && exPl ? Math.round(exPl * poids) : null
+
+                // Génération de scénarios simples
+                type Scenario = { id: number; label: string; exPaq: number; nbPaq: number; crtPal: number; seuil: number; nbPalEst: number | null; poidsPalEst: number | null; tag: string }
+                const scenarios: Scenario[] = [
+                  { id: 1, label: 'Standard',     exPaq: epq,   nbPaq: nbPaq, crtPal: crtPl, seuil, tag: 'actuel' },
+                  { id: 2, label: 'Compact',      exPaq: epq,   nbPaq: nbPaq, crtPal: Math.min(crtPl + 12, 60), seuil, tag: '' },
+                  { id: 3, label: 'Seuil haut',   exPaq: epq,   nbPaq: nbPaq, crtPal: crtPl, seuil: Math.min(seuil + 2000, 6000), tag: '' },
+                ].map(s => {
+                  const exPalS = s.exPaq * s.nbPaq * s.crtPal
+                  const nbPalS = op.total_exemplaires && exPalS ? Math.ceil(op.total_exemplaires / exPalS) : null
+                  const poidsPalS = poids && exPalS ? Math.round(exPalS * poids) : null
+                  return { ...s, nbPalEst: nbPalS, poidsPalEst: poidsPalS }
+                })
+
+                return (
+                  <div className="border-t border-stone-200 p-4 space-y-4">
+
+                    {/* Champs éditables */}
+                    <div>
+                      <div className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide mb-2">Ajustement</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { key: 'ex_par_paquet',       label: 'Ex / paquet',       hint: 'Multiple machine', ph: '100' },
+                          { key: 'nb_paquets_carton',   label: 'Paquets / carton',   hint: `→ ${ectn} ex/carton`, ph: '2' },
+                          { key: 'cartons_par_palette', label: 'Cartons / palette',  hint: 'Max Frétin : 48',   ph: '48' },
+                          { key: 'seuil_pdv',           label: 'Seuil PDV (ex)',     hint: 'Palette individuelle', ph: '2800' },
+                        ].map(f => (
+                          <div key={f.key}>
+                            <label className="text-[10px] text-stone-400 block mb-0.5">{f.label}</label>
+                            <input type="number" value={editParams[f.key] ?? ''}
+                              onChange={e => setEditParams(p => ({ ...p, [f.key]: e.target.value }))}
+                              className="w-full px-2.5 py-1.5 border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-brand-400"
+                              placeholder={f.ph} />
+                            <div className="text-[10px] text-stone-400 mt-0.5">{f.hint}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Scénarios */}
+                    <div>
+                      <div className="text-[10px] font-semibold text-stone-400 uppercase tracking-wide mb-2">Scénarios</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {scenarios.map(s => (
+                          <button key={s.id} onClick={() => setEditParams({
+                              ex_par_paquet:       String(s.exPaq),
+                              nb_paquets_carton:   String(s.nbPaq),
+                              cartons_par_palette: String(s.crtPal),
+                              seuil_pdv:           String(s.seuil),
+                            })}
+                            className={`text-left p-3 rounded-xl border transition-all ${
+                              s.tag === 'actuel'
+                                ? 'border-brand-300 bg-brand-50'
+                                : 'border-stone-200 bg-white hover:border-stone-300'
+                            }`}>
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <span className="text-xs font-semibold text-stone-800">{s.label}</span>
+                              {s.tag === 'actuel' && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700 font-medium">actuel</span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-stone-500 space-y-0.5">
+                              <div>{s.exPaq * s.nbPaq * s.crtPal} ex/palette</div>
+                              {s.nbPalEst && <div className="font-medium text-stone-700">~{s.nbPalEst} palettes</div>}
+                              {s.poidsPalEst && <div>{s.poidsPalEst.toLocaleString('fr-FR')} kg/pal</div>}
+                              <div className="text-stone-400">Seuil PDV {s.seuil.toLocaleString('fr-FR')} ex</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button onClick={() => setShowEditParams(false)}
+                        className="px-3 py-1.5 text-xs text-stone-500 border border-stone-200 rounded-lg hover:bg-stone-50 transition-colors">
+                        Annuler
+                      </button>
+                      <button onClick={handleSaveParams} disabled={savingParams}
+                        className="px-4 py-1.5 text-xs font-medium bg-stone-700 text-white rounded-lg hover:opacity-85 disabled:opacity-40 transition-all">
+                        {savingParams ? 'Enregistrement…' : 'Appliquer'}
+                      </button>
+                      <button onClick={async () => { await handleSaveParams(); navigate(`/palettisation/${op.id}`) }}
+                        disabled={savingParams}
+                        className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-stone-900 text-white rounded-lg hover:opacity-85 disabled:opacity-40 transition-all ml-auto">
+                        Appliquer & lancer la palettisation <ArrowRight size={11} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
 
             {/* CTA */}
