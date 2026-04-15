@@ -176,7 +176,7 @@ export default function Home() {
 
       {/* Note SSO (à retirer après Chantier 2) */}
       <p className="text-xs text-stone-300 text-center -mt-6">
-        L'assistant conversationnel s'ouvrira dans un nouvel onglet.
+        L'assistant s'ouvre dans la même fenêtre avec votre session active.
         L'assistant s'ouvre dans la même fenêtre avec votre session active.
       </p>
 
