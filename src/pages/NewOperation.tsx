@@ -355,6 +355,11 @@ export default function NewOperation() {
     // Résultat en kg (6 décimales pour binpacking), affiché en g dans l'UI
     return Math.round(((p / 2) * surfaceM2 * g) * 1000000) / 1000000
   })()
+  
+// Poids override : champ saisi en GRAMMES par l'utilisateur, converti en kg
+  // ⚠️ Déclaré AVANT computedPoids (fix TDZ — sinon ReferenceError en prod)
+  const overridePoidsG  = form.poids_unitaire_g ? parseFloat(form.poids_unitaire_g) : null
+  const overridePoidsKg = overridePoidsG != null ? overridePoidsG / 1000 : null
 
   // Poids effectif : formule en priorité, override en g si formule impossible
   const computedPoids = computedPoidsFormule ?? overridePoidsKg
