@@ -377,9 +377,6 @@ export default function NewOperation() {
   const cartonCoherent = nbPaqCarton >= 1 && exCarton >= exPaquet
   const crtPalette   = parseInt(form.cartons_par_palette || '48')
   const seuilPdv     = parseInt(form.seuil_pdv || '2800')
-  // Poids override : champ saisi en GRAMMES par l'utilisateur, converti en kg
-  const overridePoidsG  = form.poids_unitaire_g ? parseFloat(form.poids_unitaire_g) : null
-  const overridePoidsKg = overridePoidsG != null ? overridePoidsG / 1000 : null
   const qteTotal    = parseInt(form.qte_estimatives || '0')
   const exPalette   = exCarton * crtPalette
   const poidsPalette = computedPoids && exPalette ? Math.round(exPalette * computedPoids) : null
