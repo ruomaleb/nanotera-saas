@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, ArrowRight, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Pencil, Trash2, Calendar } from 'lucide-react'
 import { useOpContext } from '../components/Layout'
 import type { Operation, Palette } from '../types/database'
 
@@ -25,6 +25,22 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
       {sub && <div className="text-[10px] text-gray-400">{sub}</div>}
     </div>
   )
+}
+
+/**
+ * Convertit une date en format français jj/mm/aaaa pour l'affichage.
+ * Accepte les formats ISO ('YYYY-MM-DD'), Supabase TIMESTAMPTZ, ou null/undefined.
+ * Retourne le tiret cadratin '—' si vide ou non parsable (cohérent avec les autres champs nullables).
+ */
+function formatDateFr(value: string | null | undefined): string {
+  if (!value) return '—'
+  const s = String(value).trim()
+  if (!s) return '—'
+  // ISO 'YYYY-MM-DD' ou 'YYYY-MM-DDTHH:MM:SS...'
+  if (s.length >= 10 && s[4] === '-' && s[7] === '-') {
+    return `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}`
+  }
+  return s
 }
 
 function EditField({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
@@ -56,6 +72,23 @@ export default function OperationDetail() {
     ex_par_paquet: '', ex_par_carton: '', cartons_par_palette: '', seuil_pdv: '',
   })
 
+  // ── Étape 2.4.C : édition des dates logistique (bloc séparé des specs) ──
+  const [editingLogistics, setEditingLogistics] = useState(false)
+  const [logisticsFields, setLogisticsFields] = useState<{
+    date_enlevement_fretin: string
+    date_livraison_client: string
+  }>({ date_enlevement_fretin: '', date_livraison_client: '' })
+
+  const initLogisticsFields = (data: Operation) => {
+    // Les inputs type="date" attendent du YYYY-MM-DD ; on tronque l'heure si présente
+    const d = (data as any).date_enlevement_fretin
+    const l = (data as any).date_livraison_client
+    setLogisticsFields({
+      date_enlevement_fretin: d ? String(d).slice(0, 10) : '',
+      date_livraison_client:  l ? String(l).slice(0, 10) : '',
+    })
+  }
+
   const initEditFields = (data: Operation) => {
     setEditFields({
       pagination: data.pagination?.toString() ?? '',
@@ -85,6 +118,7 @@ export default function OperationDetail() {
       setEditStatut(data?.statut ?? '')
       if (data) {
         initEditFields(data)
+        initLogisticsFields(data)
         setCurrentOp({ id: data.id, code: data.code_operation, nom: data.nom_operation ?? '', statut: data.statut })
       }
       setPalCount(count ?? 0)
@@ -106,6 +140,35 @@ export default function OperationDetail() {
     await supabase.from('ops_operations').update(update).eq('id', op.id)
     setOp({ ...op, ...update })
     setEditing(false)
+  }
+
+  // ── Étape 2.4.C : sauvegarde des dates logistique vers Supabase ──
+  // Les inputs type="date" retournent YYYY-MM-DD, format directement
+  // compatible avec la colonne DATE Supabase. Pas de conversion nécessaire.
+  // Validation : warning (non bloquant) si enlèvement > livraison client.
+  const handleSaveLogistics = async () => {
+    if (!op) return
+    const dEnlev = logisticsFields.date_enlevement_fretin || null
+    const dLivr  = logisticsFields.date_livraison_client  || null
+    if (dEnlev && dLivr && dEnlev > dLivr) {
+      const proceed = confirm(
+        `⚠️ La date d'enlèvement Frétin (${formatDateFr(dEnlev)}) est postérieure ` +
+        `à la date de livraison client (${formatDateFr(dLivr)}). ` +
+        `Cohérence temporelle inhabituelle — confirmer ?`
+      )
+      if (!proceed) return
+    }
+    const update = {
+      date_enlevement_fretin: dEnlev,
+      date_livraison_client:  dLivr,
+    }
+    const { error } = await supabase.from('ops_operations').update(update).eq('id', op.id)
+    if (error) {
+      alert(`Erreur lors de la sauvegarde : ${error.message}`)
+      return
+    }
+    setOp({ ...op, ...update } as Operation)
+    setEditingLogistics(false)
   }
 
   const handleDelete = async () => {
@@ -230,6 +293,74 @@ export default function OperationDetail() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* ── Étape 2.4.C : Bloc Logistique (dates enlèvement Frétin + livraison client) ── */}
+        <div className="border border-gray-200 rounded-xl p-4 mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-medium text-sm flex items-center gap-1.5">
+              <Calendar size={14} className="text-gray-500" />
+              Logistique
+            </h3>
+            {!editingLogistics
+              ? <button
+                  onClick={() => { if (op) initLogisticsFields(op); setEditingLogistics(true) }}
+                  className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700">
+                  <Pencil size={10} /> Modifier
+                </button>
+              : <div className="flex gap-2">
+                  <button onClick={() => setEditingLogistics(false)} className="text-[10px] text-gray-400">Annuler</button>
+                  <button onClick={handleSaveLogistics} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">Enregistrer</button>
+                </div>
+            }
+          </div>
+          {!editingLogistics ? (
+            <div className="grid grid-cols-2 gap-6 text-xs">
+              <div className="flex justify-between items-baseline">
+                <span className="text-gray-500">Enlèvement Frétin</span>
+                <span className="font-medium">{formatDateFr((op as any).date_enlevement_fretin)}</span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-gray-500">Livraison client</span>
+                <span className="font-medium">{formatDateFr((op as any).date_livraison_client)}</span>
+              </div>
+              {(op as any).dates_livraison_par_centrale && Object.keys((op as any).dates_livraison_par_centrale).length > 0 && (
+                <div className="col-span-2 mt-2 pt-2 border-t border-gray-100">
+                  <div className="text-[10px] text-gray-500 mb-1">Overrides par centrale (édition SQL uniquement en V1)</div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                    {Object.entries((op as any).dates_livraison_par_centrale).map(([centrale, date]) => (
+                      <div key={centrale} className="flex justify-between text-[11px]">
+                        <span className="text-gray-500">{centrale}</span>
+                        <span className="font-medium">{formatDateFr(date as string)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-0.5">Enlèvement Frétin</label>
+                <input
+                  type="date"
+                  value={logisticsFields.date_enlevement_fretin}
+                  onChange={e => setLogisticsFields(p => ({ ...p, date_enlevement_fretin: e.target.value }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300" />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-400 block mb-0.5">Livraison client</label>
+                <input
+                  type="date"
+                  value={logisticsFields.date_livraison_client}
+                  onChange={e => setLogisticsFields(p => ({ ...p, date_livraison_client: e.target.value }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300" />
+              </div>
+              <p className="col-span-2 text-[10px] text-gray-400 italic">
+                Format affichage : jj/mm/aaaa. Les overrides par centrale (livraisons décalées) sont gérables en V1.5 — saisie SQL directe dans <code className="bg-gray-100 px-1 rounded">dates_livraison_par_centrale</code> en attendant.
+              </p>
+            </div>
+          )}
         </div>
 
 
